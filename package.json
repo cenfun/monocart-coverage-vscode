@@ -1,0 +1,43 @@
+{
+    "name": "monocart-coverage-vscode",
+    "version": "1.0.0",
+    "description": "monocart coverage reports for vscode",
+    "main": "./dist/extension.js",
+    "scripts": {
+        "lint": "eslint ./src",
+        "test": "vscode-test",
+        "dev": "node scripts/build.js --watch",
+        "build": "npm run lint && node scripts/build.js --production"
+    },
+    "license": "MIT",
+    "dependencies": {
+        "monocart-coverage-reports": "^2.10.0"
+    },
+    "devDependencies": {
+        "@vscode/test-cli": "^0.0.10",
+        "@vscode/test-electron": "^2.4.1",
+        "esbuild": "^0.23.0",
+        "esbuild-metadata-report": "^1.0.3",
+        "eslint": "^9.8.0",
+        "eslint-config-plus": "^2.0.2"
+    },
+    "engines": {
+        "vscode": "^1.54.0"
+    },
+    "displayName": "monocart-coverage-vscode",
+    "categories": [
+        "Testing"
+    ],
+    "activationEvents": [
+        "onStartupFinished"
+    ],
+    "contributes": {
+        "commands": [
+            {
+                "command": "monocart-coverage-vscode.coverage",
+                "title": "MCR: Coverage"
+            }
+        ],
+        "menus": {}
+    }
+}
