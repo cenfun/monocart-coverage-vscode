@@ -14,13 +14,15 @@ const {
     EventEmitter
 } = require('vscode');
 
-const { Util } = require('monocart-coverage-reports/util');
+const Util = require('monocart-coverage-reports/util');
 const generateMarkdownGrid = require('./markdown.js');
 
 class MCRCoverage {
     constructor(context) {
 
         this.context = context;
+
+        this.noCoverage = 'No Coverage';
 
         this.showDetails = true;
         this.coverageCache = new Map();
@@ -181,7 +183,9 @@ class MCRCoverage {
             }
         }
 
-        this.hideStatusBar();
+        console.log('hide status bar');
+        this.statusBar.hide();
+
     }
 
     getFileCoverage(activeEditor) {
@@ -274,7 +278,7 @@ class MCRCoverage {
             high: '🟢'
         };
 
-        let text = 'No Coverage';
+        let text = this.noCoverage;
         if (bytes.pct !== '') {
             const icon = colors[bytes.status] || '';
             text = `${icon} Coverage ${bytes.pct}%`;
@@ -332,14 +336,10 @@ class MCRCoverage {
             })
         });
 
-        //  const fileName = path.basename(fileCoverage.sourcePath);
-        this.statusBar.tooltip = new MarkdownString(`${table}`);
+        // console.log(table);
+
+        this.statusBar.tooltip = new MarkdownString(table);
         this.statusBar.show();
-
-    }
-
-    hideStatusBar() {
-        this.statusBar.hide();
     }
 
 
