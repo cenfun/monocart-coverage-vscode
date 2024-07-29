@@ -1,18 +1,21 @@
 const fs = require('fs');
 const path = require('path');
+
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 const {
     window,
     commands,
     StatusBarAlignment,
-    ThemeColor,
     MarkdownString,
     Range,
     Uri,
     workspace,
     EventEmitter
 } = require('vscode');
+
+const { Util } = require('monocart-coverage-reports/util');
+const generateMarkdownGrid = require('./markdown.js');
 
 class MCRCoverage {
     constructor(context) {
@@ -21,6 +24,8 @@ class MCRCoverage {
 
         this.showDetails = true;
         this.coverageCache = new Map();
+
+        this.initDecorations();
 
         this.coverageCommandId = this.initCommand();
         this.statusBar = this.initStatusBar();
@@ -47,7 +52,7 @@ class MCRCoverage {
     }
 
     initStatusBar() {
-        const statusBar = window.createStatusBarItem(StatusBarAlignment.Left);
+        const statusBar = window.createStatusBarItem(StatusBarAlignment.Left, 100);
         statusBar.command = this.coverageCommandId;
         this.context.subscriptions.push(statusBar);
         return statusBar;
@@ -90,6 +95,31 @@ class MCRCoverage {
         for (const file of files) {
             this.fileChangedEmitter.fire(file);
         }
+    }
+
+    initDecorations() {
+        const bgUncovered = window.createTextEditorDecorationType({
+            // backgroundColor: '#f88d8d4d'
+            backgroundColor: '#cc000033'
+        });
+
+        const gutterCovered = window.createTextEditorDecorationType({
+            gutterIconPath: this.getGutter('covered')
+        });
+        const gutterUncovered = window.createTextEditorDecorationType({
+            gutterIconPath: this.getGutter('uncovered')
+        });
+        const gutterPartial = window.createTextEditorDecorationType({
+            gutterIconPath: this.getGutter('partial')
+        });
+
+        this.decorations = {
+            bgUncovered,
+            gutterCovered,
+            gutterUncovered,
+            gutterPartial
+        };
+
     }
     // ============================================================================================
 
@@ -143,10 +173,10 @@ class MCRCoverage {
         // get current file coverage
         const activeEditor = window.activeTextEditor;
         if (activeEditor) {
-            const coverage = this.getFileCoverage(activeEditor);
-            if (coverage) {
-                this.showFileCoverage(activeEditor, coverage);
-                this.showStatusBar(coverage);
+            const fileCoverage = this.getFileCoverage(activeEditor);
+            if (fileCoverage) {
+                this.showFileCoverage(activeEditor, fileCoverage);
+                this.showStatusBar(fileCoverage);
                 return;
             }
         }
@@ -178,39 +208,62 @@ class MCRCoverage {
         return relPath.replace(/\\/g, '/');
     }
 
-    showFileCoverage(activeEditor, coverage) {
+    showFileCoverage(activeEditor, fileCoverage) {
 
-        const uncoveredDecoration = window.createTextEditorDecorationType({
-            // backgroundColor: '#f88d8d4d'
-            backgroundColor: '#cc000033'
-        });
+        const { bytes, lines } = fileCoverage.data;
+
         const uncoveredRanges = [];
-        uncoveredRanges.push({
-            range: new Range(
-                activeEditor.document.positionAt(50),
-                activeEditor.document.positionAt(100)
-            )
-        });
-        activeEditor.setDecorations(uncoveredDecoration, uncoveredRanges);
+        if (this.showDetails) {
+            bytes.forEach((range) => {
+                if (range.count === 0) {
+                    uncoveredRanges.push({
+                        range: new Range(
+                            activeEditor.document.positionAt(range.start),
+                            activeEditor.document.positionAt(range.end)
+                        )
+                    });
+                }
+            });
+        }
+        activeEditor.setDecorations(this.decorations.bgUncovered, uncoveredRanges);
 
-        const uncoveredGutter = window.createTextEditorDecorationType({
-            gutterIconPath: this.getGutter('uncovered')
-            // overviewRulerColor: '#ff0000'
-        });
+
+        const coveredLines = [];
         const uncoveredLines = [];
-        uncoveredLines.push({
-            range: new Range(
-                activeEditor.document.positionAt(150),
-                activeEditor.document.positionAt(150)
-            )
-        });
-        activeEditor.setDecorations(uncoveredGutter, uncoveredLines);
+        const partialLines = [];
+
+        if (this.showDetails) {
+            Object.keys(lines).forEach((line) => {
+                const hits = lines[line];
+                const textLine = activeEditor.document.lineAt(line - 1);
+                // console.log(line, hits, textLine);
+                if (typeof hits === 'number') {
+                    if (hits > 0) {
+                        coveredLines.push({
+                            range: textLine.range
+                        });
+                    } else {
+                        uncoveredLines.push({
+                            range: textLine.range
+                        });
+                    }
+                } else {
+                    partialLines.push({
+                        range: textLine.range
+                    });
+                }
+            });
+        }
+
+        activeEditor.setDecorations(this.decorations.gutterCovered, coveredLines);
+        activeEditor.setDecorations(this.decorations.gutterUncovered, uncoveredLines);
+        activeEditor.setDecorations(this.decorations.gutterPartial, partialLines);
     }
 
 
-    showStatusBar(coverage) {
+    showStatusBar(fileCoverage) {
 
-        const { summary } = coverage;
+        const { summary } = fileCoverage;
 
         const { bytes } = summary;
 
@@ -228,16 +281,59 @@ class MCRCoverage {
         }
         this.statusBar.text = text;
 
-        //         this.statusBar.tooltip = new MarkdownString(`## My MCR Coverage Report
-        // | Name | Coverage % | Covered | Uncovered | Total |
-        // | :--- | ---------: | ------: | --------: | ----: |
-        // | Bytes | 🟢 87.45 % | 292,967 |    42,056 | 335,023 |
-        // | Statements | 🟢 85.24 % |   4,367 |       756 | 5,123 |
-        // | Branches | 🟡 68.68 % |   1,351 |       616 | 1,967 |
-        // | Functions | 🟢 87.75 % |     702 |        98 |   800 |
-        // | Lines | 🟢 82.82 % |   7,465 |     1,549 | 9,014 |`);
+        const metrics = ['bytes', 'statements', 'branches', 'functions', 'lines'];
+        const nFormatter = (v) => {
+            if (typeof v === 'number') {
+                return Util.NF(v);
+            }
+            return v;
+        };
+        const pFormatter = (v, row) => {
+            if (typeof v === 'number') {
+                // console.log(row);
+                const icon = colors[row.status] || '';
+                return `${icon} ${Util.PSF(v, 100, 2)}`;
+            }
+            return v;
+        };
 
+        // console.log(summary);
 
+        const table = generateMarkdownGrid({
+            columns: [{
+                id: 'name',
+                name: 'Name'
+            }, {
+                id: 'pct',
+                name: 'Coverage %',
+                align: 'right',
+                formatter: pFormatter
+            }, {
+                id: 'covered',
+                name: 'Covered',
+                align: 'right',
+                formatter: nFormatter
+            }, {
+                id: 'uncovered',
+                name: 'Uncovered',
+                align: 'right',
+                formatter: nFormatter
+            }, {
+                id: 'total',
+                name: 'Total',
+                align: 'right',
+                formatter: nFormatter
+            }],
+            rows: metrics.map((k) => {
+                return {
+                    ... summary[k],
+                    name: Util.capitalizeFirstLetter(k)
+                };
+            })
+        });
+
+        //  const fileName = path.basename(fileCoverage.sourcePath);
+        this.statusBar.tooltip = new MarkdownString(`${table}`);
         this.statusBar.show();
 
     }
