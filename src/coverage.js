@@ -14,6 +14,7 @@ const {
     EventEmitter
 } = require('vscode');
 
+const { Locator } = require('monocart-locator');
 const Util = require('monocart-coverage-reports/util');
 const generateMarkdownGrid = require('./markdown.js');
 
@@ -214,29 +215,85 @@ class MCRCoverage {
 
     showFileCoverage(activeEditor, fileCoverage) {
 
-        const { bytes, lines } = fileCoverage.data;
+        this.showBytesCoverage(activeEditor, fileCoverage);
+        this.showGutterCoverage(activeEditor, fileCoverage);
 
+    }
+
+    showBytesCoverage(activeEditor, fileCoverage) {
         const uncoveredRanges = [];
         if (this.showDetails) {
-            bytes.forEach((range) => {
-                if (range.count === 0) {
-                    uncoveredRanges.push({
-                        range: new Range(
-                            activeEditor.document.positionAt(range.start),
-                            activeEditor.document.positionAt(range.end)
-                        )
-                    });
+
+            const {
+                bytes, lines, extras
+            } = fileCoverage.data;
+
+            const source = activeEditor.document.getText();
+            // console.log(source);
+            const locator = new Locator(source);
+            const lineMap = new Map();
+            locator.lines.forEach((lineItem) => {
+                // line 1-base
+                const line = lineItem.line + 1;
+
+                // exclude blank and comment
+                if (extras[line]) {
+                    return;
                 }
+
+                const hits = lines[line];
+                if (typeof hits === 'string' || hits === 0) {
+                    lineItem.uncoveredEntire = null;
+                    lineItem.uncoveredPieces = [];
+                    lineMap.set(line, lineItem);
+                }
+
             });
+
+            bytes.forEach((range) => {
+                const {
+                    start, end, count, ignored
+                } = range;
+
+                if (ignored) {
+                    return;
+                }
+                if (count > 0) {
+                    return;
+                }
+
+                const sLoc = locator.offsetToLocation(start);
+                const eLoc = locator.offsetToLocation(end);
+
+                // update lines coverage
+                const rangeLines = Util.getRangeLines(sLoc, eLoc);
+                Util.updateLinesCoverage(rangeLines, count, lineMap);
+
+                // console.log(lines);
+
+                // uncoveredRanges.push({
+                //     range: new Range(
+                //         activeEditor.document.positionAt(range.start),
+                //         activeEditor.document.positionAt(range.end)
+                //     )
+                // });
+            });
+
+            console.log(lineMap);
+
         }
         activeEditor.setDecorations(this.decorations.bgUncovered, uncoveredRanges);
+    }
 
-
+    showGutterCoverage(activeEditor, fileCoverage) {
         const coveredLines = [];
         const uncoveredLines = [];
         const partialLines = [];
 
         if (this.showDetails) {
+
+            const { lines } = fileCoverage.data;
+
             Object.keys(lines).forEach((line) => {
                 const hits = lines[line];
                 const textLine = activeEditor.document.lineAt(line - 1);
@@ -263,7 +320,6 @@ class MCRCoverage {
         activeEditor.setDecorations(this.decorations.gutterUncovered, uncoveredLines);
         activeEditor.setDecorations(this.decorations.gutterPartial, partialLines);
     }
-
 
     showStatusBar(fileCoverage) {
 
