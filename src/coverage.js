@@ -223,66 +223,67 @@ class MCRCoverage {
     showBytesCoverage(activeEditor, fileCoverage) {
         const uncoveredRanges = [];
         if (this.showDetails) {
+            this.getLinesCoverageInfo(activeEditor, fileCoverage);
 
-            const {
-                bytes, lines, extras
-            } = fileCoverage.data;
-
-            const source = activeEditor.document.getText();
-            // console.log(source);
-            const locator = new Locator(source);
-            const lineMap = new Map();
-            locator.lines.forEach((lineItem) => {
-                // line 1-base
-                const line = lineItem.line + 1;
-
-                // exclude blank and comment
-                if (extras[line]) {
-                    return;
-                }
-
-                const hits = lines[line];
-                if (typeof hits === 'string' || hits === 0) {
-                    lineItem.uncoveredEntire = null;
-                    lineItem.uncoveredPieces = [];
-                    lineMap.set(line, lineItem);
-                }
-
-            });
-
-            bytes.forEach((range) => {
-                const {
-                    start, end, count, ignored
-                } = range;
-
-                if (ignored) {
-                    return;
-                }
-                if (count > 0) {
-                    return;
-                }
-
-                const sLoc = locator.offsetToLocation(start);
-                const eLoc = locator.offsetToLocation(end);
-
-                // update lines coverage
-                const rangeLines = Util.getRangeLines(sLoc, eLoc);
-                Util.updateLinesCoverage(rangeLines, count, lineMap);
-
-                // console.log(lines);
-
-                // uncoveredRanges.push({
-                //     range: new Range(
-                //         activeEditor.document.positionAt(range.start),
-                //         activeEditor.document.positionAt(range.end)
-                //     )
-                // });
-            });
-
-            console.log(lineMap);
+            // uncoveredRanges.push({
+            //     range: new Range(
+            //         activeEditor.document.positionAt(range.start),
+            //         activeEditor.document.positionAt(range.end)
+            //     )
+            // });
 
         }
         activeEditor.setDecorations(this.decorations.bgUncovered, uncoveredRanges);
+    }
+
+    getLinesCoverageInfo(activeEditor, fileCoverage) {
+
+        const isJS = fileCoverage.js;
+        const {
+            bytes, lines, extras
+        } = fileCoverage.data;
+
+        const lineMap = new Map();
+        const source = activeEditor.document.getText();
+        const locator = new Locator(source);
+        locator.lines.forEach((lineItem) => {
+            // line 1-base
+            const line = lineItem.line + 1;
+            // exclude blank,comment,ignored
+            if (extras[line]) {
+                return;
+            }
+            lineItem.uncoveredEntire = null;
+            lineItem.uncoveredPieces = [];
+            lineMap.set(line, lineItem);
+        });
+
+        bytes.forEach((range) => {
+            const {
+                start, end, count, ignored
+            } = range;
+
+            if (ignored) {
+                return;
+            }
+
+            // no covered for now
+            // if (count > 0) {
+            //     return;
+            // }
+
+            const sLoc = locator.offsetToLocation(start);
+            const eLoc = locator.offsetToLocation(end);
+
+            // update lines coverage
+            const rangeLines = Util.getRangeLines(sLoc, eLoc);
+            Util.updateLinesCoverage(rangeLines, count, lineMap);
+
+        });
+
+        // lineMap.forEach((v, k) => {
+        //     console.log(k, v);
+        // });
     }
 
     showGutterCoverage(activeEditor, fileCoverage) {
