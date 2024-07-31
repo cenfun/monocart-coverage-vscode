@@ -11,12 +11,18 @@ const {
     Range,
     Uri,
     workspace,
-    EventEmitter
+    EventEmitter,
+    OverviewRulerLane
 } = require('vscode');
 
 const { Locator } = require('monocart-locator');
 const Util = require('monocart-coverage-reports/util');
-const generateMarkdownGrid = require('./markdown.js');
+
+const defaultColors = {
+    covered: '#008000',
+    uncovered: '#ff0000',
+    partial: '#ffa500'
+};
 
 class MCRCoverage {
     constructor(context) {
@@ -103,17 +109,25 @@ class MCRCoverage {
     initDecorations() {
         const bgUncovered = window.createTextEditorDecorationType({
             // backgroundColor: '#f88d8d4d'
-            backgroundColor: '#cc000033'
+            backgroundColor: '#ff000033'
         });
 
+        const alpha = '99';
+
         const gutterCovered = window.createTextEditorDecorationType({
-            gutterIconPath: this.getGutter('covered')
+            gutterIconPath: this.getGutter('covered'),
+            overviewRulerColor: defaultColors.covered + alpha,
+            overviewRulerLane: OverviewRulerLane.Left
         });
         const gutterUncovered = window.createTextEditorDecorationType({
-            gutterIconPath: this.getGutter('uncovered')
+            gutterIconPath: this.getGutter('uncovered'),
+            overviewRulerColor: defaultColors.uncovered + alpha,
+            overviewRulerLane: OverviewRulerLane.Left
         });
         const gutterPartial = window.createTextEditorDecorationType({
-            gutterIconPath: this.getGutter('partial')
+            gutterIconPath: this.getGutter('partial'),
+            overviewRulerColor: defaultColors.partial + alpha,
+            overviewRulerLane: OverviewRulerLane.Left
         });
 
         this.decorations = {
@@ -223,14 +237,41 @@ class MCRCoverage {
     showBytesCoverage(activeEditor, fileCoverage) {
         const uncoveredRanges = [];
         if (this.showDetails) {
-            this.getLinesCoverageInfo(activeEditor, fileCoverage);
+            const lineMap = this.getLinesCoverageInfo(activeEditor, fileCoverage);
 
-            // uncoveredRanges.push({
-            //     range: new Range(
-            //         activeEditor.document.positionAt(range.start),
-            //         activeEditor.document.positionAt(range.end)
-            //     )
-            // });
+            lineMap.forEach((lineItem, line) => {
+                const {
+                    uncoveredEntire, uncoveredPieces, coveredCount
+                } = lineItem;
+
+                if (uncoveredEntire) {
+
+                    uncoveredRanges.push({
+                        range: new Range(
+                            activeEditor.document.positionAt(lineItem.start + lineItem.indent),
+                            activeEditor.document.positionAt(lineItem.end)
+                        )
+                    });
+
+
+                } else {
+
+                    if (uncoveredPieces.length) {
+                        uncoveredPieces.forEach((p) => {
+                            const { pieces } = p;
+                            if (pieces) {
+                                uncoveredRanges.push({
+                                    range: new Range(
+                                        activeEditor.document.positionAt(lineItem.start + pieces.start),
+                                        activeEditor.document.positionAt(lineItem.start + pieces.end)
+                                    )
+                                });
+                            }
+                        });
+                    }
+                }
+
+            });
 
         }
         activeEditor.setDecorations(this.decorations.bgUncovered, uncoveredRanges);
@@ -238,10 +279,8 @@ class MCRCoverage {
 
     getLinesCoverageInfo(activeEditor, fileCoverage) {
 
-        const isJS = fileCoverage.js;
-        const {
-            bytes, lines, extras
-        } = fileCoverage.data;
+        // const isJS = fileCoverage.js;
+        const { bytes, extras } = fileCoverage.data;
 
         const lineMap = new Map();
         const source = activeEditor.document.getText();
@@ -253,6 +292,7 @@ class MCRCoverage {
             if (extras[line]) {
                 return;
             }
+            lineItem.coveredCount = 1;
             lineItem.uncoveredEntire = null;
             lineItem.uncoveredPieces = [];
             lineMap.set(line, lineItem);
@@ -267,10 +307,10 @@ class MCRCoverage {
                 return;
             }
 
-            // no covered for now
-            // if (count > 0) {
-            //     return;
-            // }
+            // defaults to count 1, do nothing for it
+            if (count === 1) {
+                return;
+            }
 
             const sLoc = locator.offsetToLocation(start);
             const eLoc = locator.offsetToLocation(end);
@@ -279,11 +319,10 @@ class MCRCoverage {
             const rangeLines = Util.getRangeLines(sLoc, eLoc);
             Util.updateLinesCoverage(rangeLines, count, lineMap);
 
+
         });
 
-        // lineMap.forEach((v, k) => {
-        //     console.log(k, v);
-        // });
+        return lineMap;
     }
 
     showGutterCoverage(activeEditor, fileCoverage) {
@@ -360,7 +399,7 @@ class MCRCoverage {
 
         // console.log(summary);
 
-        const table = generateMarkdownGrid({
+        const table = Util.markdown({
             columns: [{
                 id: 'name',
                 name: 'Name'
@@ -402,19 +441,13 @@ class MCRCoverage {
 
     getGutter(type) {
 
-        const types = {
-            covered: '#008000',
-            uncovered: '#ff0000',
-            partial: '#ffa500'
-        };
-
-        const color = types[type];
+        const color = defaultColors[type];
         if (!color) {
             return '';
         }
 
-        const svg = `<svg width="32" height="48" viewPort="0 0 32 48" xmlns="http://www.w3.org/2000/svg">
-        <polygon points="16,0 32,0 32,48 16,48" fill="${color}"/>
+        const svg = `<svg width="19" height="19" viewPort="0 0 19 19" xmlns="http://www.w3.org/2000/svg">
+        <rect x="6" y="0" width="8" height="19" fill="${color}" />
         </svg>`;
         const icon = `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
         return Uri.parse(icon);
