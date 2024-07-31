@@ -107,13 +107,7 @@ class MCRCoverage {
     }
 
     initDecorations() {
-        const bgUncovered = window.createTextEditorDecorationType({
-            // backgroundColor: '#f88d8d4d'
-            backgroundColor: '#ff000033'
-        });
-
         const alpha = '99';
-
         const gutterCovered = window.createTextEditorDecorationType({
             gutterIconPath: this.getGutter('covered'),
             overviewRulerColor: defaultColors.covered + alpha,
@@ -130,11 +124,26 @@ class MCRCoverage {
             overviewRulerLane: OverviewRulerLane.Left
         });
 
+
+        const bgUncovered = window.createTextEditorDecorationType({
+            backgroundColor: '#ff000033'
+        });
+
+        const elseDecoration = window.createTextEditorDecorationType({
+            before: {
+                contentText: 'E',
+                color: '#ffffff',
+                backgroundColor: '#ff0000',
+                textDecoration: 'none; padding: 0 2px; border: 1px solid #c00; border-radius: 3px; text-align: center'
+            }
+        });
+
         this.decorations = {
-            bgUncovered,
             gutterCovered,
             gutterUncovered,
-            gutterPartial
+            gutterPartial,
+            bgUncovered,
+            elseDecoration
         };
 
     }
@@ -229,9 +238,25 @@ class MCRCoverage {
 
     showFileCoverage(activeEditor, fileCoverage) {
 
-        this.showBytesCoverage(activeEditor, fileCoverage);
         this.showGutterCoverage(activeEditor, fileCoverage);
+        this.showBytesCoverage(activeEditor, fileCoverage);
+        this.showElseNoneCoverage(activeEditor, fileCoverage);
 
+    }
+
+    showElseNoneCoverage(activeEditor, fileCoverage) {
+        const elseNoneBranches = [];
+        if (this.showDetails) {
+            const { branches } = fileCoverage.data;
+            const uncoveredNoneBranches = branches.filter((it) => it.none && it.count === 0 && !it.ignored);
+            uncoveredNoneBranches.forEach((it) => {
+                const r = activeEditor.document.positionAt(it.start);
+                elseNoneBranches.push({
+                    range: new Range(r, r)
+                });
+            });
+        }
+        activeEditor.setDecorations(this.decorations.elseDecoration, elseNoneBranches);
     }
 
     showBytesCoverage(activeEditor, fileCoverage) {
@@ -240,9 +265,7 @@ class MCRCoverage {
             const lineMap = this.getLinesCoverageInfo(activeEditor, fileCoverage);
 
             lineMap.forEach((lineItem, line) => {
-                const {
-                    uncoveredEntire, uncoveredPieces, coveredCount
-                } = lineItem;
+                const { uncoveredEntire, uncoveredPieces } = lineItem;
 
                 if (uncoveredEntire) {
 
@@ -452,7 +475,6 @@ class MCRCoverage {
         const icon = `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
         return Uri.parse(icon);
     }
-
 
     destroy() {
         clearTimeout(this.timeout_update);
