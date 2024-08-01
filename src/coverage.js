@@ -18,7 +18,8 @@ const {
 } = require('vscode');
 
 const { Locator } = require('monocart-locator');
-const Util = require('monocart-coverage-reports/util');
+
+const Util = require('./util.js');
 
 const defaultColors = {
     covered: '#008000',
@@ -51,15 +52,15 @@ class MCRCoverage {
 
         window.tabGroups.onDidChangeTabs((changedEvent) => {
             // console.log('Tab group changed');
-            this.update();
+            this.update('onDidChangeTabs');
         });
 
-        workspace.onDidCloseTextDocument((doc) => {
-            this.update();
-        });
-        workspace.onDidOpenTextDocument((doc) => {
-            this.update();
-        });
+        // workspace.onDidCloseTextDocument((doc) => {
+        //     this.update('onDidCloseTextDocument');
+        // });
+        // workspace.onDidOpenTextDocument((doc) => {
+        //     this.update('onDidOpenTextDocument');
+        // });
 
     }
 
@@ -74,7 +75,7 @@ class MCRCoverage {
         const coverageCommandId = 'monocart-coverage-vscode.coverage';
         const coverageCommand = commands.registerCommand(coverageCommandId, () => {
             this.showDetails = !this.showDetails;
-            this.update();
+            this.update('coverageCommandId');
         });
         this.context.subscriptions.push(coverageCommand);
         return coverageCommandId;
@@ -103,7 +104,7 @@ class MCRCoverage {
     }
 
     async initCoverageReports() {
-        const files = await workspace.findFiles(this.coverageFilePattern);
+        const files = await workspace.findFiles(this.coverageFilePattern, '**/node_modules/**');
         for (const file of files) {
             this.fileChangedEmitter.fire(file);
         }
@@ -137,7 +138,7 @@ class MCRCoverage {
                 contentText: 'E',
                 color: '#ffffff',
                 backgroundColor: '#ff0000',
-                textDecoration: 'none; padding: 0 2px; cursor: default; border: 1px solid #c00; border-radius: 3px; text-align: center'
+                textDecoration: 'none; font-family: Helvetica,Arial,sans-serif; font-size: 11px; padding: 2px 3px; cursor: default; border: 1px solid #c00; border-radius: 3px; text-align: center'
             }
         });
 
@@ -180,12 +181,14 @@ class MCRCoverage {
             return;
         }
 
+        console.log(`Found coverage report: ${uri.fsPath}`);
+
         json.files.forEach((file) => {
             // console.log(file.sourcePath);
             this.coverageCache.set(file.sourcePath, file);
         });
 
-        this.update();
+        this.update('loadCoverage');
     }
 
     readJSONSync(filePath) {
@@ -208,9 +211,10 @@ class MCRCoverage {
     }
 
     // ============================================================================================
-    update() {
+    update(by) {
         clearTimeout(this.timeout_update);
         this.timeout_update = setTimeout(() => {
+            console.log('Update by', by);
             this.updateSync();
         }, 100);
     }
@@ -230,7 +234,7 @@ class MCRCoverage {
             }
         }
 
-        console.log('hide status bar');
+        console.log('Hide status bar');
         this.statusBar.hide();
 
     }
@@ -349,21 +353,24 @@ class MCRCoverage {
 
         hitsRanges.forEach((range) => {
 
+            const { start, count } = range;
 
+            const hits = Util.CF(count);
             const hitsDecoration = window.createTextEditorDecorationType({
                 before: {
-                    contentText: `x${range.count}`,
+                    contentText: `x${hits}`,
                     color: '#333',
                     backgroundColor: '#e6f5d0',
-                    textDecoration: 'none; font-size: 11px; padding: 0 2px; cursor: default; border: 1px solid #4eb62f; border-radius: 3px; text-align: center'
+                    textDecoration: 'none; font-family: Helvetica,Arial,sans-serif; font-size: 11px; padding: 0 2px; cursor: default; border: 1px solid #4eb62f; border-radius: 3px; text-align: center'
                 }
             });
 
-            const p = activeEditor.document.positionAt(range.start);
+            const p = activeEditor.document.positionAt(start);
             const locId = `${p.line}_${p.character - 1}`;
 
             this.hoverMap.set(locId, {
-                tooltip: JSON.stringify(range)
+                tooltip: `${Number(count).toLocaleString()} hits`,
+                range
             });
 
             activeEditor.setDecorations(hitsDecoration, [{
