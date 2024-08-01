@@ -153,22 +153,62 @@ class MCRCoverage {
     }
 
     initTooltip() {
-        const tooltip = languages.registerHoverProvider('javascript', {
-            provideHover: (document, position, token) => {
 
-                const locId = `${position.line}_${position.character}`;
-                const hoverItem = this.hoverMap.get(locId);
-                if (hoverItem) {
-                    if (hoverItem.tooltip) {
-                        return new Hover(hoverItem.tooltip);
-                    }
+        const provideHover = (document, position, token) => {
+
+            this.hideHoverRange();
+
+            const locId = `${position.line}_${position.character}`;
+            // console.log(locId);
+            const hoverItem = this.hoverMap.get(locId);
+            if (hoverItem) {
+
+                if (hoverItem.range) {
+                    this.showHoverRange(hoverItem.range);
                 }
 
-
+                if (hoverItem.tooltip) {
+                    return new Hover(hoverItem.tooltip);
+                }
             }
+
+        };
+
+        const tooltip = languages.registerHoverProvider({
+            scheme: 'file'
+        }, {
+            provideHover
         });
         this.context.subscriptions.push(tooltip);
     }
+
+    hideHoverRange() {
+        if (this.bgHover) {
+            this.bgHover.dispose();
+            this.bgHover = null;
+        }
+    }
+
+    showHoverRange(range) {
+        this.hideHoverRange();
+
+        const activeEditor = window.activeTextEditor;
+        if (activeEditor) {
+
+            this.bgHover = window.createTextEditorDecorationType({
+                backgroundColor: `${defaultColors.covered}33`
+            });
+
+            activeEditor.setDecorations(this.bgHover, [{
+                range: new Range(
+                    activeEditor.document.positionAt(range.start),
+                    activeEditor.document.positionAt(range.end)
+                )
+            }]);
+
+        }
+    }
+
     // ============================================================================================
 
     loadCoverage(uri) {
@@ -283,8 +323,7 @@ class MCRCoverage {
                 // console.log(locId);
 
                 this.hoverMap.set(locId, {
-                    tooltip: 'else path uncovered',
-                    range: it
+                    tooltip: 'else path uncovered'
                 });
 
                 elseNoneBranches.push({
@@ -367,6 +406,7 @@ class MCRCoverage {
 
             const p = activeEditor.document.positionAt(start);
             const locId = `${p.line}_${p.character - 1}`;
+            // console.log(locId);
 
             this.hoverMap.set(locId, {
                 tooltip: `${Number(count).toLocaleString()} hits`,
