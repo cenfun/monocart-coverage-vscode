@@ -12,7 +12,9 @@ const {
     Uri,
     workspace,
     EventEmitter,
-    OverviewRulerLane
+    OverviewRulerLane,
+    languages,
+    Hover
 } = require('vscode');
 
 const { Locator } = require('monocart-locator');
@@ -45,6 +47,7 @@ class MCRCoverage {
         this.initCoverageWatcher();
         this.initCoverageReports();
 
+        this.initTooltip();
 
         window.tabGroups.onDidChangeTabs((changedEvent) => {
             // console.log('Tab group changed');
@@ -134,7 +137,7 @@ class MCRCoverage {
                 contentText: 'E',
                 color: '#ffffff',
                 backgroundColor: '#ff0000',
-                textDecoration: 'none; padding: 0 2px; border: 1px solid #c00; border-radius: 3px; text-align: center'
+                textDecoration: 'none; padding: 0 2px; cursor: default; border: 1px solid #c00; border-radius: 3px; text-align: center'
             }
         });
 
@@ -146,6 +149,24 @@ class MCRCoverage {
             elseDecoration
         };
 
+    }
+
+    initTooltip() {
+        const tooltip = languages.registerHoverProvider('javascript', {
+            provideHover: (document, position, token) => {
+
+                const locId = `${position.line}_${position.character}`;
+                const hoverItem = this.hoverMap.get(locId);
+                if (hoverItem) {
+                    if (hoverItem.tooltip) {
+                        return new Hover(hoverItem.tooltip);
+                    }
+                }
+
+
+            }
+        });
+        this.context.subscriptions.push(tooltip);
     }
     // ============================================================================================
 
@@ -195,6 +216,8 @@ class MCRCoverage {
     }
 
     updateSync() {
+
+        this.hoverMap = new Map();
 
         // get current file coverage
         const activeEditor = window.activeTextEditor;
@@ -250,9 +273,18 @@ class MCRCoverage {
             const { branches } = fileCoverage.data;
             const uncoveredNoneBranches = branches.filter((it) => it.none && it.count === 0 && !it.ignored);
             uncoveredNoneBranches.forEach((it) => {
-                const r = activeEditor.document.positionAt(it.start);
+                const p = activeEditor.document.positionAt(it.start);
+
+                const locId = `${p.line}_${p.character - 1}`;
+                // console.log(locId);
+
+                this.hoverMap.set(locId, {
+                    tooltip: 'else path uncovered',
+                    range: it
+                });
+
                 elseNoneBranches.push({
-                    range: new Range(r, r)
+                    range: new Range(p, p)
                 });
             });
         }
@@ -315,9 +347,9 @@ class MCRCoverage {
             if (extras[line]) {
                 return;
             }
-            lineItem.coveredCount = 1;
-            lineItem.uncoveredEntire = null;
-            lineItem.uncoveredPieces = [];
+
+            Util.initLineCoverage(lineItem);
+
             lineMap.set(line, lineItem);
         });
 
