@@ -292,44 +292,88 @@ class MCRCoverage {
     }
 
     showBytesCoverage(activeEditor, fileCoverage) {
+
+        if (this.hitsDecorations) {
+            this.hitsDecorations.forEach((hd) => {
+                hd.dispose();
+            });
+            this.hitsDecorations = null;
+        }
+
         const uncoveredRanges = [];
         if (this.showDetails) {
-            const lineMap = this.getLinesCoverageInfo(activeEditor, fileCoverage);
-
-            lineMap.forEach((lineItem, line) => {
-                const { uncoveredEntire, uncoveredPieces } = lineItem;
-
-                if (uncoveredEntire) {
-
-                    uncoveredRanges.push({
-                        range: new Range(
-                            activeEditor.document.positionAt(lineItem.start + lineItem.indent),
-                            activeEditor.document.positionAt(lineItem.end)
-                        )
-                    });
-
-
-                } else {
-
-                    if (uncoveredPieces.length) {
-                        uncoveredPieces.forEach((p) => {
-                            const { pieces } = p;
-                            if (pieces) {
-                                uncoveredRanges.push({
-                                    range: new Range(
-                                        activeEditor.document.positionAt(lineItem.start + pieces.start),
-                                        activeEditor.document.positionAt(lineItem.start + pieces.end)
-                                    )
-                                });
-                            }
-                        });
-                    }
-                }
-
-            });
-
+            const { lineMap, hitsRanges } = this.getLinesCoverageInfo(activeEditor, fileCoverage);
+            this.updateUncoveredRages(lineMap, uncoveredRanges, activeEditor);
+            this.showHitsCoverage(activeEditor, hitsRanges);
         }
         activeEditor.setDecorations(this.decorations.bgUncovered, uncoveredRanges);
+    }
+
+    updateUncoveredRages(lineMap, uncoveredRanges, activeEditor) {
+        lineMap.forEach((lineItem, line) => {
+            const { uncoveredEntire, uncoveredPieces } = lineItem;
+
+            if (uncoveredEntire) {
+
+                uncoveredRanges.push({
+                    range: new Range(
+                        activeEditor.document.positionAt(lineItem.start + lineItem.indent),
+                        activeEditor.document.positionAt(lineItem.end)
+                    )
+                });
+
+
+            } else {
+
+                if (uncoveredPieces.length) {
+                    uncoveredPieces.forEach((p) => {
+                        const { pieces } = p;
+                        if (pieces) {
+                            uncoveredRanges.push({
+                                range: new Range(
+                                    activeEditor.document.positionAt(lineItem.start + pieces.start),
+                                    activeEditor.document.positionAt(lineItem.start + pieces.end)
+                                )
+                            });
+                        }
+                    });
+                }
+            }
+
+        });
+    }
+
+    showHitsCoverage(activeEditor, hitsRanges) {
+
+        const hitsDecorations = [];
+
+        hitsRanges.forEach((range) => {
+
+
+            const hitsDecoration = window.createTextEditorDecorationType({
+                before: {
+                    contentText: `x${range.count}`,
+                    color: '#333',
+                    backgroundColor: '#e6f5d0',
+                    textDecoration: 'none; font-size: 11px; padding: 0 2px; cursor: default; border: 1px solid #4eb62f; border-radius: 3px; text-align: center'
+                }
+            });
+
+            const p = activeEditor.document.positionAt(range.start);
+            const locId = `${p.line}_${p.character - 1}`;
+
+            this.hoverMap.set(locId, {
+                tooltip: JSON.stringify(range)
+            });
+
+            activeEditor.setDecorations(hitsDecoration, [{
+                range: new Range(p, p)
+            }]);
+            hitsDecorations.push(hitsDecoration);
+        });
+
+        this.hitsDecorations = hitsDecorations;
+
     }
 
     getLinesCoverageInfo(activeEditor, fileCoverage) {
@@ -338,6 +382,8 @@ class MCRCoverage {
         const { bytes, extras } = fileCoverage.data;
 
         const lineMap = new Map();
+        const hitsRanges = [];
+
         const source = activeEditor.document.getText();
         const locator = new Locator(source);
         locator.lines.forEach((lineItem) => {
@@ -362,22 +408,30 @@ class MCRCoverage {
                 return;
             }
 
-            // defaults to count 1, do nothing for it
-            if (count === 1) {
+            // uncovered line
+            if (count === 0) {
+                const sLoc = locator.offsetToLocation(start);
+                const eLoc = locator.offsetToLocation(end);
+
+                // update lines coverage
+                const rangeLines = Util.getRangeLines(sLoc, eLoc);
+                Util.updateLinesCoverage(rangeLines, count, lineMap);
                 return;
             }
 
-            const sLoc = locator.offsetToLocation(start);
-            const eLoc = locator.offsetToLocation(end);
+            // hits for count > 1
+            if (count > 1) {
+                hitsRanges.push(range);
+            }
 
-            // update lines coverage
-            const rangeLines = Util.getRangeLines(sLoc, eLoc);
-            Util.updateLinesCoverage(rangeLines, count, lineMap);
-
+            // defaults to count 1, do nothing for count === 1
 
         });
 
-        return lineMap;
+        return {
+            lineMap,
+            hitsRanges
+        };
     }
 
     showGutterCoverage(activeEditor, fileCoverage) {
