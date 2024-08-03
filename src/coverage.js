@@ -18,6 +18,7 @@ const {
 } = require('vscode');
 
 const { Locator } = require('monocart-locator');
+const EC = require('eight-colors');
 
 const Util = require('./util.js');
 
@@ -223,7 +224,7 @@ class MCRCoverage {
             return;
         }
 
-        console.log(`Found coverage report: ${uri.fsPath}`);
+        console.log(`Found coverage report: ${EC.green(uri.fsPath)}`);
 
         json.files.forEach((file) => {
             // console.log(file.sourcePath);
@@ -257,7 +258,13 @@ class MCRCoverage {
         clearTimeout(this.timeout_update);
         this.timeout_update = setTimeout(() => {
             console.log('Update by', by);
-            this.updateSync();
+
+            try {
+                this.updateSync();
+            } catch (e) {
+                console.log(e);
+            }
+
         }, 100);
     }
 
@@ -276,8 +283,7 @@ class MCRCoverage {
             }
         }
 
-        console.log('Hide status bar');
-        this.statusBar.hide();
+        this.hideStatusBar();
 
     }
 
@@ -287,11 +293,11 @@ class MCRCoverage {
 
         const coverage = this.coverageCache.get(filePath);
         if (coverage) {
-            console.log(`Found file coverage: ${filePath}`);
+            console.log(`Found file coverage: ${EC.green(filePath)}`);
             return coverage;
         }
 
-        console.log(`Not found file coverage: ${filePath}`);
+        console.log(`Not found file coverage: ${EC.red(filePath)}`);
 
     }
 
@@ -560,7 +566,7 @@ class MCRCoverage {
 
         // console.log(summary);
 
-        const table = Util.markdown({
+        const table = Util.markdownGrid({
             columns: [{
                 id: 'name',
                 name: 'Name'
@@ -597,8 +603,13 @@ class MCRCoverage {
 
         this.statusBar.tooltip = new MarkdownString(table);
         this.statusBar.show();
+        // console.log('Show status bar');
     }
 
+    hideStatusBar() {
+        this.statusBar.hide();
+        // console.log('Hide status bar');
+    }
 
     getGutter(type) {
 
