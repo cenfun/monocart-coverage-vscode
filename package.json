@@ -36,9 +36,24 @@
         "commands": [
             {
                 "command": "monocart-coverage-vscode.coverage",
-                "title": "MCR: Coverage"
+                "title": "Toggle Monocart Coverage"
             }
         ],
-        "menus": {}
+        "menus": {
+            "editor/context": [
+                {
+                    "command": "monocart-coverage-vscode.coverage",
+                    "when": "editorTextFocus"
+                }
+            ]
+        },
+        "keybindings": [
+            {
+                "command": "monocart-coverage-vscode.coverage",
+                "key": "ctrl+alt+c",
+                "mac": "cmd+alt+c",
+                "when": "editorTextFocus"
+            }
+        ]
     }
 }

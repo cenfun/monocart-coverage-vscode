@@ -50,40 +50,24 @@ class MCRCoverage {
 
         this.initTooltip();
 
-        // window.tabGroups.onDidChangeTabs((changedEvent) => {
-        //     this.update('onDidChangeTabs');
-        // });
+        window.tabGroups.onDidChangeTabs((changedEvent) => {
+            this.update('onDidChangeTabs');
+        });
 
         window.onDidChangeTextEditorVisibleRanges((e) => {
-
-            const { textEditor, visibleRanges } = e;
-            this.textEditor = textEditor;
-            this.visibleRanges = visibleRanges;
-
-            this.filePath = this.getRelativePath(textEditor.document.fileName);
-
             this.update('onDidChangeTextEditorVisibleRanges');
         });
 
-        window.onDidChangeActiveTextEditor((textEditor) => {
-            // console.log('onDidChangeActiveTextEditor', e);
-            if (!textEditor) {
-                this.textEditor = null;
+        workspace.onDidOpenTextDocument((doc) => {
+            // ignore git event
+            if (doc.uri.scheme === 'file') {
+                this.update('onDidOpenTextDocument');
             }
         });
 
-        // workspace.onDidOpenTextDocument((doc) => {
-
-        //     // ignore git event
-        //     if (doc.uri.scheme === 'git') {
-        //         return;
-        //     }
-
-        //     this.update('onDidOpenTextDocument');
-        // });
-
-        // workspace.onDidCloseTextDocument((doc) => {
-        // });
+        workspace.onDidCloseTextDocument((doc) => {
+            this.fileCoverage = null;
+        });
 
     }
 
@@ -255,9 +239,13 @@ class MCRCoverage {
             return;
         }
 
-        if (!this.textEditor) {
+        const activeEditor = window.activeTextEditor;
+        if (!activeEditor) {
             return;
         }
+
+        // current file path
+        this.filePath = this.getRelativePath(activeEditor.document.fileName);
 
         const fileCoverage = this.coverageCache.get(this.filePath);
         if (fileCoverage !== this.fileCoverage) {
@@ -384,7 +372,12 @@ class MCRCoverage {
             return;
         }
 
-        const document = this.textEditor.document;
+        const activeEditor = window.activeTextEditor;
+        if (!activeEditor) {
+            return;
+        }
+
+        const document = activeEditor.document;
         const { lines } = this.fileCoverage.data;
 
         const coveredLines = [];
@@ -419,7 +412,7 @@ class MCRCoverage {
                 overviewRulerColor: `${defaultColors.covered}99`,
                 overviewRulerLane: OverviewRulerLane.Left
             });
-            this.textEditor.setDecorations(gutterCovered, coveredLines);
+            activeEditor.setDecorations(gutterCovered, coveredLines);
             this.gutterDecorations.push(gutterCovered);
         }
 
@@ -429,7 +422,7 @@ class MCRCoverage {
                 overviewRulerColor: `${defaultColors.uncovered}99`,
                 overviewRulerLane: OverviewRulerLane.Left
             });
-            this.textEditor.setDecorations(gutterUncovered, uncoveredLines);
+            activeEditor.setDecorations(gutterUncovered, uncoveredLines);
             this.gutterDecorations.push(gutterUncovered);
         }
 
@@ -439,7 +432,7 @@ class MCRCoverage {
                 overviewRulerColor: `${defaultColors.partial}99`,
                 overviewRulerLane: OverviewRulerLane.Left
             });
-            this.textEditor.setDecorations(gutterPartial, partialLines);
+            activeEditor.setDecorations(gutterPartial, partialLines);
             this.gutterDecorations.push(gutterPartial);
         }
 
@@ -448,7 +441,20 @@ class MCRCoverage {
     // ============================================================================================
 
     updateFileCoverage() {
-        console.log('updateFileCoverage', this.visibleRanges);
+
+        const activeEditor = window.activeTextEditor;
+
+        console.log('updateFileCoverage');
+
+        const visibleRanges = activeEditor.visibleRanges;
+
+        console.log('visibleRanges', visibleRanges.length);
+        visibleRanges.forEach((range) => {
+            const { start, end } = range;
+            console.log(start.line, end.line);
+        });
+
+
     }
 
 
