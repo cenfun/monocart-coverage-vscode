@@ -138,8 +138,8 @@ class MCRCoverage {
             before: {
                 contentText: 'E',
                 color: '#ffffff',
-                backgroundColor: '#ff0000',
-                textDecoration: 'none; font-family: Helvetica,Arial,sans-serif; font-size: 11px; padding: 2px 3px; cursor: default; border: 1px solid #c00; border-radius: 3px; text-align: center'
+                backgroundColor: defaultColors.uncovered,
+                textDecoration: 'none; padding: 0 3px; cursor: default; border-radius: 3px; text-align: center'
             }
         });
 
@@ -411,9 +411,9 @@ class MCRCoverage {
             const hitsDecoration = window.createTextEditorDecorationType({
                 before: {
                     contentText: `x${hits}`,
-                    color: '#333',
-                    backgroundColor: '#e6f5d0',
-                    textDecoration: 'none; font-family: Helvetica,Arial,sans-serif; font-size: 11px; padding: 0 2px; cursor: default; border: 1px solid #4eb62f; border-radius: 3px; text-align: center'
+                    color: '#ffffff',
+                    backgroundColor: defaultColors.covered,
+                    textDecoration: 'none; padding: 0 3px; cursor: default; border-radius: 3px; text-align: center'
                 }
             });
 
