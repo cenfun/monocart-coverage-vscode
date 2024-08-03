@@ -36,9 +36,8 @@ class MCRCoverage {
         this.noCoverage = 'No Coverage';
 
         this.showDetails = true;
+        this.hasCoverageReport = false;
         this.coverageCache = new Map();
-
-        this.initDecorations();
 
         this.coverageCommandId = this.initCommand();
         this.statusBar = this.initStatusBar();
@@ -52,15 +51,20 @@ class MCRCoverage {
         this.initTooltip();
 
         window.tabGroups.onDidChangeTabs((changedEvent) => {
-            // console.log('Tab group changed');
             this.update('onDidChangeTabs');
         });
 
+        workspace.onDidOpenTextDocument((doc) => {
+
+            // ignore git event
+            if (doc.uri.scheme === 'git') {
+                return;
+            }
+
+            this.update('onDidOpenTextDocument');
+        });
+
         // workspace.onDidCloseTextDocument((doc) => {
-        //     this.update('onDidCloseTextDocument');
-        // });
-        // workspace.onDidOpenTextDocument((doc) => {
-        //     this.update('onDidOpenTextDocument');
         // });
 
     }
@@ -111,47 +115,7 @@ class MCRCoverage {
         }
     }
 
-    initDecorations() {
-        const alpha = '99';
-        const gutterCovered = window.createTextEditorDecorationType({
-            gutterIconPath: this.getGutter('covered'),
-            overviewRulerColor: defaultColors.covered + alpha,
-            overviewRulerLane: OverviewRulerLane.Left
-        });
-        const gutterUncovered = window.createTextEditorDecorationType({
-            gutterIconPath: this.getGutter('uncovered'),
-            overviewRulerColor: defaultColors.uncovered + alpha,
-            overviewRulerLane: OverviewRulerLane.Left
-        });
-        const gutterPartial = window.createTextEditorDecorationType({
-            gutterIconPath: this.getGutter('partial'),
-            overviewRulerColor: defaultColors.partial + alpha,
-            overviewRulerLane: OverviewRulerLane.Left
-        });
-
-
-        const bgUncovered = window.createTextEditorDecorationType({
-            backgroundColor: '#ff000033'
-        });
-
-        const elseDecoration = window.createTextEditorDecorationType({
-            before: {
-                contentText: 'E',
-                color: '#ffffff',
-                backgroundColor: defaultColors.uncovered,
-                textDecoration: 'none; padding: 0 3px; cursor: default; border-radius: 3px; text-align: center'
-            }
-        });
-
-        this.decorations = {
-            gutterCovered,
-            gutterUncovered,
-            gutterPartial,
-            bgUncovered,
-            elseDecoration
-        };
-
-    }
+    // ============================================================================================
 
     initTooltip() {
 
@@ -220,7 +184,7 @@ class MCRCoverage {
             return;
         }
 
-        if (json.type !== 'v8' || !json.files) {
+        if (json.type !== 'v8' || !json.files || !json.files.length) {
             return;
         }
 
@@ -230,6 +194,8 @@ class MCRCoverage {
             // console.log(file.sourcePath);
             this.coverageCache.set(file.sourcePath, file);
         });
+
+        this.hasCoverageReport = true;
 
         this.update('loadCoverage');
     }
@@ -257,37 +223,37 @@ class MCRCoverage {
     update(by) {
         clearTimeout(this.timeout_update);
         this.timeout_update = setTimeout(() => {
-            console.log('Update by', by);
-
-            try {
-                this.updateSync();
-            } catch (e) {
-                console.log(e);
-            }
-
+            this.updateSync(by);
         }, 100);
     }
 
-    updateSync() {
+    updateSync(by) {
 
-        this.hoverMap = new Map();
+        console.log('Update by', by);
 
-        // get current file coverage
-        const activeEditor = window.activeTextEditor;
-        if (activeEditor) {
-            const fileCoverage = this.getFileCoverage(activeEditor);
-            if (fileCoverage) {
-                this.showFileCoverage(activeEditor, fileCoverage);
-                this.showStatusBar(fileCoverage);
-                return;
-            }
+        if (!this.hasCoverageReport) {
+            return;
         }
 
-        this.hideStatusBar();
+        if (this.hoverMap) {
+            this.hoverMap.clear();
+        }
+        this.hoverMap = new Map();
+
+        this.fileCoverage = this.getFileCoverage();
+        this.showStatusBar();
 
     }
 
-    getFileCoverage(activeEditor) {
+    // ============================================================================================
+
+    getFileCoverage() {
+        const activeEditor = window.activeTextEditor;
+        if (!activeEditor) {
+            console.log('Not found activeEditor');
+            return;
+        }
+
         const fileName = activeEditor.document.fileName;
         const filePath = this.getRelativePath(fileName);
 
@@ -311,61 +277,246 @@ class MCRCoverage {
         return relPath.replace(/\\/g, '/');
     }
 
-    showFileCoverage(activeEditor, fileCoverage) {
+    // ============================================================================================
 
-        this.showGutterCoverage(activeEditor, fileCoverage);
-        this.showBytesCoverage(activeEditor, fileCoverage);
-        this.showElseNoneCoverage(activeEditor, fileCoverage);
+    showStatusBar() {
 
-    }
-
-    getPrevLocId(p) {
-        const column = p.character > 0 ? p.character - 1 : 0;
-        const locId = `${p.line}_${column}`;
-        // console.log(locId);
-
-        return locId;
-    }
-
-    showElseNoneCoverage(activeEditor, fileCoverage) {
-        const elseNoneBranches = [];
-        if (this.showDetails) {
-            const { branches } = fileCoverage.data;
-            const uncoveredNoneBranches = branches.filter((it) => it.none && it.count === 0 && !it.ignored);
-            uncoveredNoneBranches.forEach((it) => {
-                const p = activeEditor.document.positionAt(it.start);
-                const locId = this.getPrevLocId(p);
-                this.hoverMap.set(locId, {
-                    tooltip: 'else path uncovered'
-                });
-
-                elseNoneBranches.push({
-                    range: new Range(p, p)
-                });
-            });
+        if (!this.fileCoverage) {
+            this.hideStatusBar();
+            return;
         }
-        activeEditor.setDecorations(this.decorations.elseDecoration, elseNoneBranches);
+
+        const { summary } = this.fileCoverage;
+        const { bytes } = summary;
+
+        const colors = {
+            low: '🔴',
+            medium: '🟡',
+            high: '🟢'
+        };
+
+        let text = this.noCoverage;
+        if (bytes.pct !== '') {
+            const status = this.showDetails ? '$(debug-coverage) ' : '';
+            const icon = colors[bytes.status] || '';
+            text = `${status}${icon} Coverage ${bytes.pct}%`;
+        }
+        this.statusBar.text = text;
+
+        const metrics = ['bytes', 'statements', 'branches', 'functions', 'lines'];
+        const nFormatter = (v) => {
+            if (typeof v === 'number') {
+                return Util.NF(v);
+            }
+            return v;
+        };
+        const pFormatter = (v, row) => {
+            if (typeof v === 'number') {
+                // console.log(row);
+                const icon = colors[row.status] || '';
+                return `${icon} ${Util.PSF(v, 100, 2)}`;
+            }
+            return v;
+        };
+
+        // console.log(summary);
+
+        const table = Util.markdownGrid({
+            columns: [{
+                id: 'name',
+                name: 'Name'
+            }, {
+                id: 'pct',
+                name: 'Coverage %',
+                align: 'right',
+                formatter: pFormatter
+            }, {
+                id: 'covered',
+                name: 'Covered',
+                align: 'right',
+                formatter: nFormatter
+            }, {
+                id: 'uncovered',
+                name: 'Uncovered',
+                align: 'right',
+                formatter: nFormatter
+            }, {
+                id: 'total',
+                name: 'Total',
+                align: 'right',
+                formatter: nFormatter
+            }],
+            rows: metrics.map((k) => {
+                return {
+                    ... summary[k],
+                    name: Util.capitalizeFirstLetter(k)
+                };
+            })
+        });
+
+        // console.log(table);
+
+        this.statusBar.tooltip = new MarkdownString(table);
+        this.statusBar.show();
+        // console.log('Show status bar');
+
+        clearTimeout(this.timeout_file_decorations);
+        this.timeout_file_decorations = setTimeout(() => {
+            this.showFileCoverage();
+        }, 100);
+
     }
 
-    showBytesCoverage(activeEditor, fileCoverage) {
+    hideStatusBar() {
+        this.statusBar.hide();
+        // console.log('Hide status bar');
+    }
 
-        if (this.hitsDecorations) {
-            this.hitsDecorations.forEach((hd) => {
+    // ============================================================================================
+
+    showFileCoverage() {
+
+        this.cleanFileDecorations();
+
+        if (!this.fileCoverage) {
+            return;
+        }
+
+        if (!this.showDetails) {
+            return;
+        }
+
+
+        this.showGutterCoverage();
+        this.showElseNoneCoverage();
+        this.showBytesCoverage();
+
+    }
+
+    cleanFileDecorations() {
+        if (this.fileDecorations) {
+            this.fileDecorations.forEach((hd) => {
                 hd.dispose();
             });
-            this.hitsDecorations = null;
         }
-
-        const uncoveredRanges = [];
-        if (this.showDetails) {
-            const { lineMap, hitsRanges } = this.getLinesCoverageInfo(activeEditor, fileCoverage);
-            this.updateUncoveredRages(lineMap, uncoveredRanges, activeEditor);
-            this.showHitsCoverage(activeEditor, hitsRanges);
-        }
-        activeEditor.setDecorations(this.decorations.bgUncovered, uncoveredRanges);
+        this.fileDecorations = [];
     }
 
-    updateUncoveredRages(lineMap, uncoveredRanges, activeEditor) {
+    // ============================================================================================
+
+    showGutterCoverage() {
+
+        const activeEditor = window.activeTextEditor;
+        const document = activeEditor.document;
+        const { lines } = this.fileCoverage.data;
+
+        const coveredLines = [];
+        const uncoveredLines = [];
+        const partialLines = [];
+
+        Object.keys(lines).forEach((line) => {
+            const hits = lines[line];
+            const textLine = document.lineAt(line - 1);
+            // console.log(line, hits, textLine);
+            if (typeof hits === 'number') {
+                if (hits > 0) {
+                    coveredLines.push({
+                        range: textLine.range
+                    });
+                } else {
+                    uncoveredLines.push({
+                        range: textLine.range
+                    });
+                }
+            } else {
+                partialLines.push({
+                    range: textLine.range
+                });
+            }
+        });
+
+
+        if (coveredLines.length) {
+            const gutterCovered = window.createTextEditorDecorationType({
+                gutterIconPath: this.getGutter('covered'),
+                overviewRulerColor: `${defaultColors.covered}99`,
+                overviewRulerLane: OverviewRulerLane.Left
+            });
+            activeEditor.setDecorations(gutterCovered, coveredLines);
+            this.fileDecorations.push(gutterCovered);
+        }
+
+        if (uncoveredLines.length) {
+            const gutterUncovered = window.createTextEditorDecorationType({
+                gutterIconPath: this.getGutter('uncovered'),
+                overviewRulerColor: `${defaultColors.uncovered}99`,
+                overviewRulerLane: OverviewRulerLane.Left
+            });
+            activeEditor.setDecorations(gutterUncovered, uncoveredLines);
+            this.fileDecorations.push(gutterUncovered);
+        }
+
+        if (partialLines.length) {
+            const gutterPartial = window.createTextEditorDecorationType({
+                gutterIconPath: this.getGutter('partial'),
+                overviewRulerColor: `${defaultColors.partial}99`,
+                overviewRulerLane: OverviewRulerLane.Left
+            });
+            activeEditor.setDecorations(gutterPartial, partialLines);
+            this.fileDecorations.push(gutterPartial);
+        }
+
+    }
+
+    showElseNoneCoverage() {
+
+        const activeEditor = window.activeTextEditor;
+        const document = activeEditor.document;
+
+        const elseNoneBranches = [];
+        const { branches } = this.fileCoverage.data;
+        const uncoveredNoneBranches = branches.filter((it) => it.none && it.count === 0 && !it.ignored);
+        uncoveredNoneBranches.forEach((it) => {
+            const p = document.positionAt(it.start);
+            const locId = this.getPrevLocId(p);
+            this.hoverMap.set(locId, {
+                tooltip: 'else path uncovered'
+            });
+
+            elseNoneBranches.push({
+                range: new Range(p, p)
+            });
+        });
+
+        if (elseNoneBranches.length) {
+            const elseDecoration = window.createTextEditorDecorationType({
+                overviewRulerColor: `${defaultColors.uncovered}99`,
+                before: {
+                    contentText: 'E',
+                    color: '#ffffff',
+                    backgroundColor: defaultColors.uncovered,
+                    textDecoration: 'none; padding: 0 3px; cursor: default; border-radius: 3px; text-align: center'
+                }
+            });
+            activeEditor.setDecorations(elseDecoration, elseNoneBranches);
+            this.fileDecorations.push(elseDecoration);
+        }
+    }
+
+    showBytesCoverage() {
+
+        const activeEditor = window.activeTextEditor;
+        const { lineMap, hitsRanges } = this.getLinesCoverageInfo(activeEditor, this.fileCoverage);
+
+        this.showUncoveredRanges(activeEditor, lineMap);
+        this.showHitsCoverage(activeEditor, hitsRanges);
+
+    }
+
+    showUncoveredRanges(activeEditor, lineMap) {
+
+        const uncoveredRanges = [];
+
         lineMap.forEach((lineItem, line) => {
             const { uncoveredEntire, uncoveredPieces } = lineItem;
 
@@ -397,11 +548,18 @@ class MCRCoverage {
             }
 
         });
+
+        if (uncoveredRanges.length) {
+            const bgUncovered = window.createTextEditorDecorationType({
+                backgroundColor: '#ff000033'
+            });
+            activeEditor.setDecorations(bgUncovered, uncoveredRanges);
+            this.fileDecorations.push(bgUncovered);
+        }
+
     }
 
     showHitsCoverage(activeEditor, hitsRanges) {
-
-        const hitsDecorations = [];
 
         hitsRanges.forEach((range) => {
 
@@ -427,10 +585,9 @@ class MCRCoverage {
             activeEditor.setDecorations(hitsDecoration, [{
                 range: new Range(p, p)
             }]);
-            hitsDecorations.push(hitsDecoration);
-        });
 
-        this.hitsDecorations = hitsDecorations;
+            this.fileDecorations.push(hitsDecoration);
+        });
 
     }
 
@@ -492,124 +649,7 @@ class MCRCoverage {
         };
     }
 
-    showGutterCoverage(activeEditor, fileCoverage) {
-        const coveredLines = [];
-        const uncoveredLines = [];
-        const partialLines = [];
-
-        if (this.showDetails) {
-
-            const { lines } = fileCoverage.data;
-
-            Object.keys(lines).forEach((line) => {
-                const hits = lines[line];
-                const textLine = activeEditor.document.lineAt(line - 1);
-                // console.log(line, hits, textLine);
-                if (typeof hits === 'number') {
-                    if (hits > 0) {
-                        coveredLines.push({
-                            range: textLine.range
-                        });
-                    } else {
-                        uncoveredLines.push({
-                            range: textLine.range
-                        });
-                    }
-                } else {
-                    partialLines.push({
-                        range: textLine.range
-                    });
-                }
-            });
-        }
-
-        activeEditor.setDecorations(this.decorations.gutterCovered, coveredLines);
-        activeEditor.setDecorations(this.decorations.gutterUncovered, uncoveredLines);
-        activeEditor.setDecorations(this.decorations.gutterPartial, partialLines);
-    }
-
-    showStatusBar(fileCoverage) {
-
-        const { summary } = fileCoverage;
-
-        const { bytes } = summary;
-
-        // 🟢 🟡 🔴 🟠 ⚫ ⚪ 🟣 🔵
-        const colors = {
-            low: '🔴',
-            medium: '🟡',
-            high: '🟢'
-        };
-
-        let text = this.noCoverage;
-        if (bytes.pct !== '') {
-            const icon = colors[bytes.status] || '';
-            text = `${icon} Coverage ${bytes.pct}%`;
-        }
-        this.statusBar.text = text;
-
-        const metrics = ['bytes', 'statements', 'branches', 'functions', 'lines'];
-        const nFormatter = (v) => {
-            if (typeof v === 'number') {
-                return Util.NF(v);
-            }
-            return v;
-        };
-        const pFormatter = (v, row) => {
-            if (typeof v === 'number') {
-                // console.log(row);
-                const icon = colors[row.status] || '';
-                return `${icon} ${Util.PSF(v, 100, 2)}`;
-            }
-            return v;
-        };
-
-        // console.log(summary);
-
-        const table = Util.markdownGrid({
-            columns: [{
-                id: 'name',
-                name: 'Name'
-            }, {
-                id: 'pct',
-                name: 'Coverage %',
-                align: 'right',
-                formatter: pFormatter
-            }, {
-                id: 'covered',
-                name: 'Covered',
-                align: 'right',
-                formatter: nFormatter
-            }, {
-                id: 'uncovered',
-                name: 'Uncovered',
-                align: 'right',
-                formatter: nFormatter
-            }, {
-                id: 'total',
-                name: 'Total',
-                align: 'right',
-                formatter: nFormatter
-            }],
-            rows: metrics.map((k) => {
-                return {
-                    ... summary[k],
-                    name: Util.capitalizeFirstLetter(k)
-                };
-            })
-        });
-
-        // console.log(table);
-
-        this.statusBar.tooltip = new MarkdownString(table);
-        this.statusBar.show();
-        // console.log('Show status bar');
-    }
-
-    hideStatusBar() {
-        this.statusBar.hide();
-        // console.log('Hide status bar');
-    }
+    // ============================================================================================
 
     getGutter(type) {
 
@@ -625,7 +665,17 @@ class MCRCoverage {
         return Uri.parse(icon);
     }
 
+    getPrevLocId(p) {
+        const column = p.character > 0 ? p.character - 1 : 0;
+        const locId = `${p.line}_${column}`;
+        // console.log(locId);
+
+        return locId;
+    }
+    // ============================================================================================
+
     destroy() {
+        clearTimeout(this.timeout_file_decorations);
         clearTimeout(this.timeout_update);
         this.coverageCache.clear();
         this.coverageCache = null;
