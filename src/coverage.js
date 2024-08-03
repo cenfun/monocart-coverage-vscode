@@ -159,8 +159,10 @@ class MCRCoverage {
             this.hideHoverRange();
 
             const locId = `${position.line}_${position.character}`;
-            // console.log(locId);
             const hoverItem = this.hoverMap.get(locId);
+
+            // console.log(locId, hoverItem);
+
             if (hoverItem) {
 
                 if (hoverItem.range) {
@@ -311,6 +313,14 @@ class MCRCoverage {
 
     }
 
+    getPrevLocId(p) {
+        const column = p.character > 0 ? p.character - 1 : 0;
+        const locId = `${p.line}_${column}`;
+        // console.log(locId);
+
+        return locId;
+    }
+
     showElseNoneCoverage(activeEditor, fileCoverage) {
         const elseNoneBranches = [];
         if (this.showDetails) {
@@ -318,10 +328,7 @@ class MCRCoverage {
             const uncoveredNoneBranches = branches.filter((it) => it.none && it.count === 0 && !it.ignored);
             uncoveredNoneBranches.forEach((it) => {
                 const p = activeEditor.document.positionAt(it.start);
-
-                const locId = `${p.line}_${p.character - 1}`;
-                // console.log(locId);
-
+                const locId = this.getPrevLocId(p);
                 this.hoverMap.set(locId, {
                     tooltip: 'else path uncovered'
                 });
@@ -405,9 +412,7 @@ class MCRCoverage {
             });
 
             const p = activeEditor.document.positionAt(start);
-            const locId = `${p.line}_${p.character - 1}`;
-            // console.log(locId);
-
+            const locId = this.getPrevLocId(p);
             this.hoverMap.set(locId, {
                 tooltip: `${Number(count).toLocaleString()} hits`,
                 range
