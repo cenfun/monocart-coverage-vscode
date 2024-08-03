@@ -1,3 +1,5 @@
+const fs = require('fs');
+const path = require('path');
 const esbuild = require('esbuild');
 const metadataReport = require('esbuild-metadata-report');
 
@@ -26,6 +28,15 @@ const esbuildProblemMatcherPlugin = {
 };
 
 async function main() {
+
+    if (production) {
+        fs.rmSync(path.resolve('./dist'), {
+            force: true,
+            recursive: true,
+            maxRetries: 10
+        });
+    }
+
     const ctx = await esbuild.context({
         entryPoints: [
             'src/extension.js'
