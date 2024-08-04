@@ -41,7 +41,9 @@ class MCRCoverage {
 
         this.initLog();
 
-        this.coverageCommandId = this.initCommand();
+        this.coverageCommandId = 'mcv.coverage';
+        this.initCommand();
+
         this.statusBar = this.initStatusBar();
 
         this.fileChangedEmitter = this.initFileChangedEmitter();
@@ -95,15 +97,13 @@ class MCRCoverage {
     }
 
     initCommand() {
-        const coverageCommandId = 'monocart-coverage-vscode.coverage';
-        const coverageCommand = commands.registerCommand(coverageCommandId, () => {
+        const coverageCommand = commands.registerCommand(this.coverageCommandId, () => {
             this.showDetails = !this.showDetails;
             // force to update
             this.fileCoverage = null;
             this.update('showDetails');
         });
         this.context.subscriptions.push(coverageCommand);
-        return coverageCommandId;
     }
 
     initFileChangedEmitter() {
@@ -247,11 +247,11 @@ class MCRCoverage {
         console.log(`Update by ${EC.magenta(by)}`);
         clearTimeout(this.timeout_update);
         this.timeout_update = setTimeout(() => {
-            this.updateSync(by);
+            this.updateSync();
         }, 100);
     }
 
-    updateSync(by) {
+    updateSync() {
 
         if (!this.hasCoverageReport) {
             return;
@@ -265,22 +265,17 @@ class MCRCoverage {
         // current file path
         this.filePath = this.getRelativePath(activeEditor.document.fileName);
 
-        let dataChanged = false;
-        if (by === 'showDetails') {
-            dataChanged = true;
-        }
-
         const fileCoverage = this.coverageCache.get(this.filePath);
         if (fileCoverage !== this.fileCoverage) {
             this.fileCoverage = fileCoverage;
-            dataChanged = true;
-        }
 
-        if (dataChanged) {
-            const color = this.fileCoverage ? EC.green : EC.red;
-            const log = `${this.fileCoverage ? '' : 'Not '}Found file coverage: ${color(this.filePath)}`;
+            const color = fileCoverage ? EC.green : EC.red;
+            const log = `${fileCoverage ? '' : 'Not '}Found file coverage: ${color(this.filePath)}`;
             console.log(log);
             this.output(log);
+
+            // update context value
+            commands.executeCommand('setContext', 'mcv.hasCoverage', Boolean(fileCoverage));
 
             this.tooltipMap.clear();
             this.tooltipMap = new Map();

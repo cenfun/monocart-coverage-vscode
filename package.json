@@ -35,24 +35,24 @@
     "contributes": {
         "commands": [
             {
-                "command": "monocart-coverage-vscode.coverage",
+                "command": "mcv.coverage",
                 "title": "Toggle Monocart Coverage"
             }
         ],
         "menus": {
             "editor/context": [
                 {
-                    "command": "monocart-coverage-vscode.coverage",
-                    "when": "editorTextFocus"
+                    "command": "mcv.coverage",
+                    "when": "editorTextFocus && mcv.hasCoverage"
                 }
             ]
         },
         "keybindings": [
             {
-                "command": "monocart-coverage-vscode.coverage",
+                "command": "mcv.coverage",
                 "key": "ctrl+alt+c",
                 "mac": "cmd+alt+c",
-                "when": "editorTextFocus"
+                "when": "editorTextFocus && mcv.hasCoverage"
             }
         ]
     }
