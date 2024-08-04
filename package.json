@@ -43,7 +43,7 @@
             "editor/context": [
                 {
                     "command": "mcv.coverage",
-                    "when": "editorTextFocus && mcv.hasCoverage"
+                    "when": "editorFocus && mcv.hasCoverage"
                 }
             ]
         },
@@ -52,7 +52,7 @@
                 "command": "mcv.coverage",
                 "key": "ctrl+alt+c",
                 "mac": "cmd+alt+c",
-                "when": "editorTextFocus && mcv.hasCoverage"
+                "when": "editorFocus && mcv.hasCoverage"
             }
         ]
     }

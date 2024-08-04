@@ -44,10 +44,10 @@ class MCRCoverage {
         this.coverageCommandId = 'mcv.coverage';
         this.initCommand();
 
-        this.statusBar = this.initStatusBar();
+        this.initStatusBar();
 
-        this.fileChangedEmitter = this.initFileChangedEmitter();
         this.coverageFilePattern = '**/coverage-report.json';
+        this.initFileChangedEmitter();
 
         this.initCoverageWatcher();
         this.initCoverageReports();
@@ -55,9 +55,7 @@ class MCRCoverage {
         this.tooltipMap = new Map();
         this.initTooltip();
 
-        // visible decorations, cache by line index
-        this.decorationMap = new Map();
-
+        // init change event
         window.tabGroups.onDidChangeTabs((changedEvent) => {
             this.update('onDidChangeTabs');
         });
@@ -93,7 +91,7 @@ class MCRCoverage {
         const statusBar = window.createStatusBarItem(StatusBarAlignment.Left, 100);
         statusBar.command = this.coverageCommandId;
         this.context.subscriptions.push(statusBar);
-        return statusBar;
+        this.statusBar = statusBar;
     }
 
     initCommand() {
@@ -111,7 +109,7 @@ class MCRCoverage {
         fileChangedEmitter.event((uri) => {
             this.loadCoverage(uri);
         });
-        return fileChangedEmitter;
+        this.fileChangedEmitter = fileChangedEmitter;
     }
 
     initCoverageWatcher() {
@@ -789,12 +787,7 @@ class MCRCoverage {
     // ============================================================================================
 
     getGutter(type) {
-
         const color = defaultColors[type];
-        if (!color) {
-            return '';
-        }
-
         const svg = `<svg width="19" height="19" viewPort="0 0 19 19" xmlns="http://www.w3.org/2000/svg">
         <rect x="6" y="0" width="8" height="19" fill="${color}" />
         </svg>`;
@@ -806,7 +799,6 @@ class MCRCoverage {
         const column = p.character > 0 ? p.character - 1 : 0;
         const locId = `${p.line}_${column}`;
         // console.log(locId);
-
         return locId;
     }
 
