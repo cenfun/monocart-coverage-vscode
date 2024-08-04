@@ -533,11 +533,22 @@ class MCRCoverage {
             this.uncoveredDecorationMap = null;
         }
 
+        if (this.hitsDecorationMap) {
+            this.hitsDecorationMap.forEach((list) => {
+                list.forEach((item) => {
+                    item.dispose();
+                });
+            });
+            this.hitsDecorationMap.clear();
+            this.hitsDecorationMap = null;
+        }
+
         if (!this.showDetails || !this.fileCoverage) {
             return;
         }
 
         this.uncoveredDecorationMap = new Map();
+        this.hitsDecorationMap = new Map();
 
         if (this.fileCoverage.hitsMap) {
             // console.log('hitsMap already done');
@@ -590,10 +601,14 @@ class MCRCoverage {
         // update visible lines
         const visibleRanges = window.activeTextEditor.visibleRanges;
         const { start, end } = visibleRanges[0];
+
+        // reduce blink when scrolling slowly
+        const cacheLineSize = 50;
+
         // to 1-base
-        const lineStart = start.line + 1;
-        const lineEnd = end.line + 1;
-        console.log('visibleRanges', EC.yellow(`${lineStart} ~ ${lineEnd}`));
+        const lineStart = start.line + 1 - cacheLineSize;
+        const lineEnd = end.line + 1 + cacheLineSize;
+        console.log('visible ranges', EC.yellow(`${lineStart} ~ ${lineEnd}`));
 
         this.renderUncoveredDecorations(lineStart, lineEnd);
         this.renderHitsDecorations(lineStart, lineEnd);
@@ -641,8 +656,7 @@ class MCRCoverage {
 
         });
 
-        // Array.from(this.uncoveredDecorationMap.keys())
-        console.log(`uncoveredDecorationMap: ${EC.yellow(this.uncoveredDecorationMap.size)}`);
+        console.log(`visible uncovered: ${EC.yellow(this.uncoveredDecorationMap.size)}`);
 
     }
 
@@ -650,37 +664,64 @@ class MCRCoverage {
 
         // one line could be multiple decorations (single range)
 
+        const activeEditor = window.activeTextEditor;
         this.fileCoverage.hitsMap.forEach((list, line) => {
+            // line 1-base
+            if (line < lineStart || line > lineEnd) {
+                // console.log(line, start, end);
+
+                // remove
+                if (this.hitsDecorationMap.has(line)) {
+                    const hits = this.hitsDecorationMap.get(line);
+                    hits.forEach((item) => {
+                        item.dispose();
+                    });
+                    this.hitsDecorationMap.delete(line);
+                }
+
+                return;
+            }
+
+            if (this.hitsDecorationMap.has(line)) {
+                return;
+            }
+
+            const hits = [];
+            list.forEach((range) => {
+
+                const { start, count } = range;
+
+                const hitsValue = Util.CF(count);
+                const decoration = window.createTextEditorDecorationType({
+                    before: {
+                        contentText: `x${hitsValue}`,
+                        color: '#ffffff',
+                        backgroundColor: defaultColors.covered,
+                        textDecoration: 'none; padding: 0 3px; cursor: default; border-radius: 3px; text-align: center'
+                    }
+                });
+
+                const p = activeEditor.document.positionAt(start);
+                const locId = this.getPrevLocId(p);
+                this.tooltipMap.set(locId, {
+                    tooltip: `${Number(count).toLocaleString()} hits`,
+                    range
+                });
+
+                activeEditor.setDecorations(decoration, [{
+                    range: new Range(p, p)
+                }]);
+
+
+                hits.push(decoration);
+            });
+
+            this.hitsDecorationMap.set(line, hits);
+            // console.log(line);
 
         });
 
-        // hitsRanges.forEach((range) => {
-
-        //     const { start, count } = range;
-
-        //     const hits = Util.CF(count);
-        //     const hitsDecoration = window.createTextEditorDecorationType({
-        //         before: {
-        //             contentText: `x${hits}`,
-        //             color: '#ffffff',
-        //             backgroundColor: defaultColors.covered,
-        //             textDecoration: 'none; padding: 0 3px; cursor: default; border-radius: 3px; text-align: center'
-        //         }
-        //     });
-
-        //     const p = activeEditor.document.positionAt(start);
-        //     const locId = this.getPrevLocId(p);
-        //     this.tooltipMap.set(locId, {
-        //         tooltip: `${Number(count).toLocaleString()} hits`,
-        //         range
-        //     });
-
-        //     activeEditor.setDecorations(hitsDecoration, [{
-        //         range: new Range(p, p)
-        //     }]);
-
-        //     // this.visibleDecorations.push(hitsDecoration);
-        // });
+        console.log(`visible hits: ${EC.yellow(this.hitsDecorationMap.size)}`);
 
     }
 
