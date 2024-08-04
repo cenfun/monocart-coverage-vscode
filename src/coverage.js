@@ -28,7 +28,7 @@ const defaultColors = {
     partial: '#ffa500'
 };
 
-class MCRCoverage {
+class MCV {
     constructor(context) {
 
         this.context = context;
@@ -821,4 +821,4 @@ class MCRCoverage {
     }
 }
 
-module.exports = MCRCoverage;
+module.exports = MCV;
