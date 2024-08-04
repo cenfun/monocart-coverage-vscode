@@ -22,6 +22,10 @@
         "eslint-config-plus": "^2.0.2",
         "monocart-coverage-reports": "^2.10.0"
     },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/cenfun/monocart-coverage-vscode.git"
+    },
     "engines": {
         "vscode": "^1.54.0"
     },
