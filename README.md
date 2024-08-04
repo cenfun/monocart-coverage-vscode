@@ -2,7 +2,7 @@
 
 This extension shows native V8 code coverage in VSCode
 
-![](images/preview.gif)
+![](assets/preview.gif)
 
 ## Getting Started
 
