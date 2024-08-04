@@ -39,6 +39,8 @@ class MCRCoverage {
         this.hasCoverageReport = false;
         this.coverageCache = new Map();
 
+        this.initLog();
+
         this.coverageCommandId = this.initCommand();
         this.statusBar = this.initStatusBar();
 
@@ -48,7 +50,11 @@ class MCRCoverage {
         this.initCoverageWatcher();
         this.initCoverageReports();
 
+        this.tooltipMap = new Map();
         this.initTooltip();
+
+        // visible decorations, cache by line index
+        this.decorationMap = new Map();
 
         window.tabGroups.onDidChangeTabs((changedEvent) => {
             this.update('onDidChangeTabs');
@@ -71,6 +77,16 @@ class MCRCoverage {
 
     }
 
+    initLog() {
+        this.logChannel = window.createOutputChannel('Monocart Coverage');
+        this.context.subscriptions.push(this.logChannel);
+        this.logChannel.clear();
+    }
+
+    output(str) {
+        this.logChannel.appendLine(EC.remove(str));
+    }
+
     initStatusBar() {
         const statusBar = window.createStatusBarItem(StatusBarAlignment.Left, 100);
         statusBar.command = this.coverageCommandId;
@@ -84,7 +100,7 @@ class MCRCoverage {
             this.showDetails = !this.showDetails;
             // force to update
             this.fileCoverage = null;
-            this.update('coverageCommandId');
+            this.update('showDetails');
         });
         this.context.subscriptions.push(coverageCommand);
         return coverageCommandId;
@@ -128,7 +144,7 @@ class MCRCoverage {
             this.hideHoverRange();
 
             const locId = `${position.line}_${position.character}`;
-            const hoverItem = this.hoverMap.get(locId);
+            const hoverItem = this.tooltipMap.get(locId);
 
             // console.log(locId, hoverItem);
 
@@ -192,7 +208,10 @@ class MCRCoverage {
             return;
         }
 
-        console.log(`Found coverage report: ${EC.green(uri.fsPath)}`);
+        const log = `Found coverage report: ${EC.green(uri.fsPath)}`;
+        console.log(log);
+        this.output(log);
+
 
         json.files.forEach((file) => {
             // console.log(file.sourcePath);
@@ -225,6 +244,7 @@ class MCRCoverage {
 
     // ============================================================================================
     update(by) {
+        console.log(`Update by ${EC.magenta(by)}`);
         clearTimeout(this.timeout_update);
         this.timeout_update = setTimeout(() => {
             this.updateSync(by);
@@ -232,8 +252,6 @@ class MCRCoverage {
     }
 
     updateSync(by) {
-
-        console.log('Update by', by);
 
         if (!this.hasCoverageReport) {
             return;
@@ -247,30 +265,48 @@ class MCRCoverage {
         // current file path
         this.filePath = this.getRelativePath(activeEditor.document.fileName);
 
+        let dataChanged = false;
+        if (by === 'showDetails') {
+            dataChanged = true;
+        }
+
         const fileCoverage = this.coverageCache.get(this.filePath);
         if (fileCoverage !== this.fileCoverage) {
             this.fileCoverage = fileCoverage;
-            this.updateStatusBar();
-            this.updateGutterCoverage();
+            dataChanged = true;
         }
 
-        this.updateFileCoverage();
+        if (dataChanged) {
+            const color = this.fileCoverage ? EC.green : EC.red;
+            const log = `${this.fileCoverage ? '' : 'Not '}Found file coverage: ${color(this.filePath)}`;
+            console.log(log);
+            this.output(log);
+
+            this.tooltipMap.clear();
+            this.tooltipMap = new Map();
+
+            this.updateStatusBar();
+            this.updateGutter();
+            this.updateE();
+
+            this.updateVisibleData();
+        }
+
+        this.renderVisibleCoverage();
 
     }
+
 
     // ============================================================================================
 
     updateStatusBar() {
-        if (this.fileCoverage) {
-            console.log(`Found file coverage: ${EC.green(this.filePath)}`);
-            this.showStatusBar();
-        } else {
-            console.log(`Not found file coverage: ${EC.red(this.filePath)}`);
-            this.hideStatusBar();
-        }
-    }
 
-    showStatusBar() {
+        if (!this.fileCoverage) {
+            this.statusBar.hide();
+            // console.log('Hide status bar');
+            return;
+        }
+
 
         const { summary } = this.fileCoverage;
         const { bytes } = summary;
@@ -348,35 +384,17 @@ class MCRCoverage {
 
     }
 
-    hideStatusBar() {
-        this.statusBar.hide();
-        // console.log('Hide status bar');
-    }
-
     // ============================================================================================
 
-    updateGutterCoverage() {
+    updateGutter() {
 
-        if (this.gutterDecorations) {
-            this.gutterDecorations.forEach((hd) => {
-                hd.dispose();
-            });
-        }
-        this.gutterDecorations = [];
+        this.cleanGutter();
 
-        if (!this.fileCoverage) {
-            return;
-        }
-
-        if (!this.showDetails) {
+        if (!this.showDetails || !this.fileCoverage) {
             return;
         }
 
         const activeEditor = window.activeTextEditor;
-        if (!activeEditor) {
-            return;
-        }
-
         const document = activeEditor.document;
         const { lines } = this.fileCoverage.data;
 
@@ -407,220 +425,276 @@ class MCRCoverage {
 
 
         if (coveredLines.length) {
-            const gutterCovered = window.createTextEditorDecorationType({
+            this.gutterCoveredDecoration = window.createTextEditorDecorationType({
                 gutterIconPath: this.getGutter('covered'),
                 overviewRulerColor: `${defaultColors.covered}99`,
                 overviewRulerLane: OverviewRulerLane.Left
             });
-            activeEditor.setDecorations(gutterCovered, coveredLines);
-            this.gutterDecorations.push(gutterCovered);
+            activeEditor.setDecorations(this.gutterCoveredDecoration, coveredLines);
         }
 
         if (uncoveredLines.length) {
-            const gutterUncovered = window.createTextEditorDecorationType({
+            this.gutterUncoveredDecoration = window.createTextEditorDecorationType({
                 gutterIconPath: this.getGutter('uncovered'),
                 overviewRulerColor: `${defaultColors.uncovered}99`,
                 overviewRulerLane: OverviewRulerLane.Left
             });
-            activeEditor.setDecorations(gutterUncovered, uncoveredLines);
-            this.gutterDecorations.push(gutterUncovered);
+            activeEditor.setDecorations(this.gutterUncoveredDecoration, uncoveredLines);
         }
 
         if (partialLines.length) {
-            const gutterPartial = window.createTextEditorDecorationType({
+            this.gutterPartialDecoration = window.createTextEditorDecorationType({
                 gutterIconPath: this.getGutter('partial'),
                 overviewRulerColor: `${defaultColors.partial}99`,
                 overviewRulerLane: OverviewRulerLane.Left
             });
-            activeEditor.setDecorations(gutterPartial, partialLines);
-            this.gutterDecorations.push(gutterPartial);
+            activeEditor.setDecorations(this.gutterPartialDecoration, partialLines);
         }
 
+    }
+
+    cleanGutter() {
+        if (this.gutterCoveredDecoration) {
+            this.gutterCoveredDecoration.dispose();
+            this.gutterCoveredDecoration = null;
+        }
+
+        if (this.gutterUncoveredDecoration) {
+            this.gutterUncoveredDecoration.dispose();
+            this.gutterUncoveredDecoration = null;
+        }
+
+        if (this.gutterPartialDecoration) {
+            this.gutterPartialDecoration.dispose();
+            this.gutterPartialDecoration = null;
+        }
     }
 
     // ============================================================================================
 
-    updateFileCoverage() {
+    updateE() {
 
-        const activeEditor = window.activeTextEditor;
-
-        console.log('updateFileCoverage');
-
-        const visibleRanges = activeEditor.visibleRanges;
-
-        console.log('visibleRanges', visibleRanges.length);
-        visibleRanges.forEach((range) => {
-            const { start, end } = range;
-            console.log(start.line, end.line);
-        });
-
-
-    }
-
-
-    showFileCoverage() {
-
-        if (this.hoverMap) {
-            this.hoverMap.clear();
+        if (this.eDecoration) {
+            this.eDecoration.dispose();
+            this.eDecoration = null;
         }
-        this.hoverMap = new Map();
 
-        if (this.fileDecorations) {
-            this.fileDecorations.forEach((hd) => {
-                hd.dispose();
-            });
-        }
-        this.fileDecorations = [];
-
-        if (!this.fileCoverage) {
+        if (!this.showDetails || !this.fileCoverage) {
             return;
         }
 
-        if (!this.showDetails) {
-            return;
+        let uncoveredNoneBranches = this.fileCoverage.uncoveredNoneBranches;
+        if (!uncoveredNoneBranches) {
+            const { branches } = this.fileCoverage.data;
+            uncoveredNoneBranches = branches.filter((it) => it.none && it.count === 0 && !it.ignored);
+            this.fileCoverage.uncoveredNoneBranches = uncoveredNoneBranches;
         }
 
-
-        this.showElseNoneCoverage();
-        this.showBytesCoverage();
-
-    }
-
-
-    // ============================================================================================
-
-    showElseNoneCoverage() {
+        if (!uncoveredNoneBranches.length) {
+            return;
+        }
 
         const activeEditor = window.activeTextEditor;
         const document = activeEditor.document;
-
-        const elseNoneBranches = [];
-        const { branches } = this.fileCoverage.data;
-        const uncoveredNoneBranches = branches.filter((it) => it.none && it.count === 0 && !it.ignored);
+        const eBranches = [];
         uncoveredNoneBranches.forEach((it) => {
             const p = document.positionAt(it.start);
             const locId = this.getPrevLocId(p);
-            this.hoverMap.set(locId, {
+            this.tooltipMap.set(locId, {
                 tooltip: 'else path uncovered'
             });
-
-            elseNoneBranches.push({
+            eBranches.push({
                 range: new Range(p, p)
             });
         });
 
-        if (elseNoneBranches.length) {
-            const elseDecoration = window.createTextEditorDecorationType({
-                overviewRulerColor: `${defaultColors.uncovered}99`,
-                before: {
-                    contentText: 'E',
-                    color: '#ffffff',
-                    backgroundColor: defaultColors.uncovered,
-                    textDecoration: 'none; padding: 0 3px; cursor: default; border-radius: 3px; text-align: center'
-                }
+        this.eDecoration = window.createTextEditorDecorationType({
+            overviewRulerColor: `${defaultColors.uncovered}99`,
+            before: {
+                contentText: 'E',
+                color: '#ffffff',
+                backgroundColor: defaultColors.uncovered,
+                textDecoration: 'none; padding: 0 3px; cursor: default; border-radius: 3px; text-align: center'
+            }
+        });
+        activeEditor.setDecorations(this.eDecoration, eBranches);
+
+    }
+
+    // ============================================================================================
+
+    updateVisibleData() {
+
+        if (this.uncoveredDecorationMap) {
+            this.uncoveredDecorationMap.forEach((item) => {
+                item.dispose();
             });
-            activeEditor.setDecorations(elseDecoration, elseNoneBranches);
-            this.fileDecorations.push(elseDecoration);
+            this.uncoveredDecorationMap.clear();
+            this.uncoveredDecorationMap = null;
         }
-    }
 
-    showBytesCoverage() {
+        if (!this.showDetails || !this.fileCoverage) {
+            return;
+        }
 
-        const activeEditor = window.activeTextEditor;
-        const { lineMap, hitsRanges } = this.getLinesCoverageInfo(activeEditor, this.fileCoverage);
+        this.uncoveredDecorationMap = new Map();
 
-        this.showUncoveredRanges(activeEditor, lineMap);
-        this.showHitsCoverage(activeEditor, hitsRanges);
+        if (this.fileCoverage.hitsMap) {
+            // console.log('hitsMap already done');
+            return;
+        }
 
-    }
+        const { hitsMap, lineMap } = this.getLinesCoverageInfo();
 
-    showUncoveredRanges(activeEditor, lineMap) {
+        this.fileCoverage.hitsMap = hitsMap;
 
-        const uncoveredRanges = [];
-
+        const uncoveredLineMap = new Map();
         lineMap.forEach((lineItem, line) => {
+            const list = [];
             const { uncoveredEntire, uncoveredPieces } = lineItem;
-
             if (uncoveredEntire) {
-
-                uncoveredRanges.push({
-                    range: new Range(
-                        activeEditor.document.positionAt(lineItem.start + lineItem.indent),
-                        activeEditor.document.positionAt(lineItem.end)
-                    )
+                list.push({
+                    start: lineItem.start + lineItem.indent,
+                    end: lineItem.end
                 });
-
-
             } else {
-
                 if (uncoveredPieces.length) {
                     uncoveredPieces.forEach((p) => {
                         const { pieces } = p;
                         if (pieces) {
-                            uncoveredRanges.push({
-                                range: new Range(
-                                    activeEditor.document.positionAt(lineItem.start + pieces.start),
-                                    activeEditor.document.positionAt(lineItem.start + pieces.end)
-                                )
+                            list.push({
+                                start: lineItem.start + pieces.start,
+                                end: lineItem.start + pieces.end
                             });
                         }
                     });
                 }
             }
-
+            if (list.length) {
+                uncoveredLineMap.set(line, list);
+            }
         });
 
-        if (uncoveredRanges.length) {
-            const bgUncovered = window.createTextEditorDecorationType({
-                backgroundColor: '#ff000033'
-            });
-            activeEditor.setDecorations(bgUncovered, uncoveredRanges);
-            this.fileDecorations.push(bgUncovered);
+        this.fileCoverage.uncoveredLineMap = uncoveredLineMap;
+
+    }
+
+    // ============================================================================================
+
+    renderVisibleCoverage() {
+
+        if (!this.showDetails || !this.fileCoverage) {
+            return;
         }
 
+        // update visible lines
+        const visibleRanges = window.activeTextEditor.visibleRanges;
+        const { start, end } = visibleRanges[0];
+        // to 1-base
+        const lineStart = start.line + 1;
+        const lineEnd = end.line + 1;
+        console.log('visibleRanges', EC.yellow(`${lineStart} ~ ${lineEnd}`));
+
+        this.renderUncoveredDecorations(lineStart, lineEnd);
+        this.renderHitsDecorations(lineStart, lineEnd);
+
     }
 
-    showHitsCoverage(activeEditor, hitsRanges) {
+    renderUncoveredDecorations(lineStart, lineEnd) {
 
-        hitsRanges.forEach((range) => {
+        // one line on decoration (multiple ranges)
 
-            const { start, count } = range;
+        const activeEditor = window.activeTextEditor;
+        this.fileCoverage.uncoveredLineMap.forEach((list, line) => {
+            // line 1-base
+            if (line < lineStart || line > lineEnd) {
+                // console.log(line, start, end);
 
-            const hits = Util.CF(count);
-            const hitsDecoration = window.createTextEditorDecorationType({
-                before: {
-                    contentText: `x${hits}`,
-                    color: '#ffffff',
-                    backgroundColor: defaultColors.covered,
-                    textDecoration: 'none; padding: 0 3px; cursor: default; border-radius: 3px; text-align: center'
+                // remove
+                if (this.uncoveredDecorationMap.has(line)) {
+                    this.uncoveredDecorationMap.get(line).dispose();
+                    this.uncoveredDecorationMap.delete(line);
                 }
+
+                return;
+            }
+
+            if (this.uncoveredDecorationMap.has(line)) {
+                return;
+            }
+
+            const uncoveredRanges = [];
+            list.forEach((item) => {
+                uncoveredRanges.push({
+                    range: new Range(
+                        activeEditor.document.positionAt(item.start),
+                        activeEditor.document.positionAt(item.end)
+                    )
+                });
             });
-
-            const p = activeEditor.document.positionAt(start);
-            const locId = this.getPrevLocId(p);
-            this.hoverMap.set(locId, {
-                tooltip: `${Number(count).toLocaleString()} hits`,
-                range
+            const decoration = window.createTextEditorDecorationType({
+                backgroundColor: '#ff000033'
             });
+            activeEditor.setDecorations(decoration, uncoveredRanges);
+            this.uncoveredDecorationMap.set(line, decoration);
+            // console.log(line);
 
-            activeEditor.setDecorations(hitsDecoration, [{
-                range: new Range(p, p)
-            }]);
-
-            this.fileDecorations.push(hitsDecoration);
         });
 
+        // Array.from(this.uncoveredDecorationMap.keys())
+        console.log(`uncoveredDecorationMap: ${EC.yellow(this.uncoveredDecorationMap.size)}`);
+
     }
 
-    getLinesCoverageInfo(activeEditor, fileCoverage) {
+    renderHitsDecorations(lineStart, lineEnd) {
+
+        // one line could be multiple decorations (single range)
+
+        this.fileCoverage.hitsMap.forEach((list, line) => {
+
+        });
+
+        // hitsRanges.forEach((range) => {
+
+        //     const { start, count } = range;
+
+        //     const hits = Util.CF(count);
+        //     const hitsDecoration = window.createTextEditorDecorationType({
+        //         before: {
+        //             contentText: `x${hits}`,
+        //             color: '#ffffff',
+        //             backgroundColor: defaultColors.covered,
+        //             textDecoration: 'none; padding: 0 3px; cursor: default; border-radius: 3px; text-align: center'
+        //         }
+        //     });
+
+        //     const p = activeEditor.document.positionAt(start);
+        //     const locId = this.getPrevLocId(p);
+        //     this.tooltipMap.set(locId, {
+        //         tooltip: `${Number(count).toLocaleString()} hits`,
+        //         range
+        //     });
+
+        //     activeEditor.setDecorations(hitsDecoration, [{
+        //         range: new Range(p, p)
+        //     }]);
+
+        //     // this.visibleDecorations.push(hitsDecoration);
+        // });
+
+    }
+
+    // ============================================================================================
+
+    getLinesCoverageInfo() {
 
         // const isJS = fileCoverage.js;
-        const { bytes, extras } = fileCoverage.data;
+        const { bytes, extras } = this.fileCoverage.data;
 
         const lineMap = new Map();
-        const hitsRanges = [];
+        const hitsMap = new Map();
 
-        const source = activeEditor.document.getText();
+        const source = window.activeTextEditor.document.getText();
         const locator = new Locator(source);
         locator.lines.forEach((lineItem) => {
             // line 1-base
@@ -657,7 +731,13 @@ class MCRCoverage {
 
             // hits for count > 1
             if (count > 1) {
-                hitsRanges.push(range);
+                const sLoc = locator.offsetToLocation(start);
+                const line = sLoc.line;
+                if (hitsMap.has(line)) {
+                    hitsMap.get(line).push(range);
+                } else {
+                    hitsMap.set(line, [range]);
+                }
             }
 
             // defaults to count 1, do nothing for count === 1
@@ -666,7 +746,7 @@ class MCRCoverage {
 
         return {
             lineMap,
-            hitsRanges
+            hitsMap
         };
     }
 
