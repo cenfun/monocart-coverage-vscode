@@ -5,12 +5,21 @@
     "main": "./dist/extension.js",
     "scripts": {
         "lint": "eslint ./src",
-        "test": "vscode-test",
         "dev": "node scripts/build.js --watch",
         "build": "npm run lint && node scripts/build.js --production",
         "package": "vsce package"
     },
+    "keywords": [
+        "Monocart",
+        "Coverage",
+        "MCR",
+        "V8"
+    ],
     "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/cenfun/monocart-coverage-vscode.git"
+    },
     "dependencies": {},
     "devDependencies": {
         "@vscode/test-cli": "^0.0.10",
@@ -20,11 +29,7 @@
         "esbuild-metadata-report": "^1.0.3",
         "eslint": "^9.8.0",
         "eslint-config-plus": "^2.0.2",
-        "monocart-coverage-reports": "^2.10.0"
-    },
-    "repository": {
-        "type": "git",
-        "url": "git+https://github.com/cenfun/monocart-coverage-vscode.git"
+        "monocart-coverage-reports": "^2.10.1"
     },
     "engines": {
         "vscode": "^1.54.0"
@@ -35,12 +40,6 @@
     "pricing": "Free",
     "categories": [
         "Testing"
-    ],
-    "keywords": [
-        "Monocart",
-        "Coverage",
-        "MCR",
-        "V8"
     ],
     "activationEvents": [
         "onStartupFinished"
