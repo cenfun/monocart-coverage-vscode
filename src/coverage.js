@@ -34,12 +34,12 @@ class MCV {
         this.context = context;
 
         this.noCoverage = 'No Coverage';
-
-        this.showDetails = true;
         this.hasCoverageReport = false;
         this.coverageCache = new Map();
 
         this.initLog();
+
+        this.initOptions();
 
         this.coverageCommandId = 'mcv.coverage';
         this.initCommand();
@@ -77,6 +77,19 @@ class MCV {
 
     }
 
+    initOptions() {
+        const showDetails = this.context.globalState.get('showDetails', true);
+        this.setOption('showDetails', showDetails);
+    }
+
+    setOption(key, value) {
+        this[key] = value;
+        this.context.globalState.update(key, value);
+        const str = `${key}: ${value}`;
+        console.log(str);
+        this.output(str);
+    }
+
     initLog() {
         this.logChannel = window.createOutputChannel('Monocart Coverage');
         this.context.subscriptions.push(this.logChannel);
@@ -96,7 +109,8 @@ class MCV {
 
     initCommand() {
         const coverageCommand = commands.registerCommand(this.coverageCommandId, () => {
-            this.showDetails = !this.showDetails;
+            this.setOption('showDetails', !this.showDetails);
+
             // force to update
             this.fileCoverage = null;
             this.update('showDetails');
