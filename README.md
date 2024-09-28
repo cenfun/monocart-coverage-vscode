@@ -23,3 +23,8 @@ const coverageOptions = {
 Test with `TypeScript` project, open the file `checker.ts` (52K+ lines)
 
 ![](assets/performance.gif)
+
+
+## Coverage for Test Runner
+
+VSCode officially supports coverage view for the test runner, see [test-coverage](https://code.visualstudio.com/api/extension-guides/testing#test-coverage), I've tried adding V8 coverage data for the test runner, but it didn't luck. Maybe someone can help.
