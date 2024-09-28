@@ -17,3 +17,9 @@ const coverageOptions = {
     // ...
 }
 ```
+
+## Performance
+
+Test with `TypeScript` project, open the file `checker.ts` (52K+ lines)
+
+![](assets/performance.gif)
